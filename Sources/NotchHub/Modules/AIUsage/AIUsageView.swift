@@ -18,25 +18,25 @@ struct AIUsageView: View {
 
     private var usage: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                tile("Current 5h window", value: module.stats.blockWork, messages: module.stats.blockMessages,
-                     footnote: resetText)
-                tile("Today", value: module.stats.todayWork, messages: module.stats.todayMessages, footnote: nil)
-                tile("Last 7 days", value: module.stats.weekWork, messages: module.stats.weekMessages, footnote: nil)
-            }
-
-            if module.budget > 0 {
-                let fraction = min(1, Double(module.stats.blockWork) / Double(module.budget))
-                VStack(alignment: .leading, spacing: 3) {
-                    ProgressView(value: fraction).tint(fraction > 0.85 ? .red : (fraction > 0.6 ? .orange : .green))
-                    Text("\(Int(fraction * 100))% of your \(AIUsageModule.abbreviate(module.budget)) token budget")
-                        .font(.system(size: 10)).foregroundStyle(.secondary)
+            // Main answer: how much is left in the current 5-hour window.
+            VStack(spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(module.percentLeft.map { "\($0)% left" } ?? "No data yet")
+                        .font(.system(size: 30, weight: .semibold, design: .rounded))
+                    Spacer()
+                    Text(resetText).font(.system(size: 12)).foregroundStyle(.secondary)
                 }
+                ProgressView(value: module.fractionLeft ?? 0)
+                    .tint(barColor)
+                    .scaleEffect(x: 1, y: 1.6)
+                Text(detailText)
+                    .font(.system(size: 10)).foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack {
-                Text("Claude Code logs · input + output tokens, cache excluded")
-                    .font(.system(size: 10)).foregroundStyle(.tertiary)
+            HStack(spacing: 10) {
+                miniStat("Today", value: module.stats.todayWork)
+                miniStat("Last 7 days", value: module.stats.weekWork)
                 Spacer()
                 iconButton("arrow.clockwise") { module.refresh() }
                 iconButton("gearshape") { showSettings = true }
@@ -45,28 +45,39 @@ struct AIUsageView: View {
         .padding(.horizontal, 6)
     }
 
-    private var resetText: String? {
-        guard let end = module.stats.blockEnd else { return "No active window" }
+    private var barColor: Color {
+        guard let left = module.fractionLeft else { return .gray }
+        return left < 0.15 ? .red : (left < 0.4 ? .orange : .green)
+    }
+
+    private var resetText: String {
+        guard let end = module.stats.blockEnd else { return "No active 5h window" }
         let minutes = max(0, Int(end.timeIntervalSinceNow / 60))
         return "Resets in \(minutes / 60)h \(minutes % 60)m"
     }
 
-    private func tile(_ title: String, value: Int, messages: Int, footnote: String?) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.system(size: 10)).foregroundStyle(.secondary)
-            Text(AIUsageModule.abbreviate(value))
-                .font(.system(size: 26, weight: .semibold, design: .rounded))
-            Text("\(messages) responses").font(.system(size: 10)).foregroundStyle(.secondary)
-            Text(footnote ?? " ").font(.system(size: 10)).foregroundStyle(.tertiary)
+    private var detailText: String {
+        guard module.limit > 0 else { return "Use Claude Code and the percentage will appear here." }
+        let used = AIUsageModule.abbreviate(module.stats.blockWork)
+        let limit = AIUsageModule.abbreviate(module.limit)
+        return module.isEstimated
+            ? "\(used) used of ~\(limit) (your busiest window this week, an estimate). Tap ⚙ to set your own limit."
+            : "\(used) used of your \(limit) limit per 5-hour window."
+    }
+
+    private func miniStat(_ title: String, value: Int) -> some View {
+        HStack(spacing: 6) {
+            Text(title).font(.system(size: 11)).foregroundStyle(.secondary)
+            Text(AIUsageModule.abbreviate(value)).font(.system(size: 12, weight: .semibold, design: .rounded))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.08)))
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .background(Capsule().fill(Color.white.opacity(0.08)))
     }
 
     private func iconButton(_ symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 12)).foregroundStyle(.secondary)
+            Image(systemName: symbol).font(.system(size: 13)).foregroundStyle(.secondary)
+                .frame(width: 26, height: 26).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -81,19 +92,17 @@ struct AIUsageView: View {
                 Button("Done") { showSettings = false }.controlSize(.small)
             }
             HStack {
-                Text("Token budget per 5h window")
-                    .font(.system(size: 12))
+                Text("Token limit per 5h window").font(.system(size: 12))
                 TextField("0", value: $module.budget, format: .number)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 110)
-                Text("0 = no limit bar").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("0 = estimate automatically").font(.system(size: 10)).foregroundStyle(.secondary)
             }
-            Text("Anthropic does not publish your remaining quota locally, so set a budget you want to stay under.")
+            Text("Anthropic does not publish your remaining quota locally. By default the limit is your busiest 5-hour window of the past week; enter a number to measure against your own limit. Counts input + output tokens from Claude Code logs, cache excluded.")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
             Divider()
-            Text("Live API integration · coming later")
-                .font(.system(size: 11, weight: .medium))
-            Text("A future version can read real limits through an official API. No keys are stored or bundled in this build.")
+            Text("Live API integration · coming later").font(.system(size: 11, weight: .medium))
+            Text("No keys are stored or bundled in this build.")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 6)

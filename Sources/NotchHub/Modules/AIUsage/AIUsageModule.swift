@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// Shows Claude Code usage by reading its local logs.
+/// Shows how much of your Claude Code usage is left, by reading its local logs.
 ///
-/// Anthropic doesn't expose plan limits locally, so the limit bar is driven by an
-/// optional token budget you set yourself. A placeholder is left for a future
-/// API integration; no keys are stored or hardcoded.
+/// Anthropic doesn't expose the real plan limit locally, so "% left" is measured
+/// against a limit you can set yourself, or (by default) against your busiest
+/// 5-hour window of the last week, which is marked as an estimate in the UI.
+/// A placeholder is left for a future API integration; no keys are stored.
 final class AIUsageModule: NotchModule, ObservableObject {
     let id = "ai"
     let title = "AI usage"
@@ -16,7 +17,7 @@ final class AIUsageModule: NotchModule, ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var hasData = UsageScanner.hasData
-    /// Optional token budget for one 5-hour window (0 = not set).
+    /// Optional token limit for one 5-hour window (0 = estimate automatically).
     @Published var budget: Int {
         didSet { UserDefaults.standard.set(budget, forKey: Self.budgetKey) }
     }
@@ -32,6 +33,26 @@ final class AIUsageModule: NotchModule, ObservableObject {
     }
 
     deinit { timer?.invalidate() }
+
+    // MARK: Limit and percentage
+
+    /// The limit the percentage is measured against.
+    var limit: Int { budget > 0 ? budget : stats.blockMax }
+    var isEstimated: Bool { budget <= 0 }
+
+    /// 0...1 of the current window still available; nil when there is nothing to compare to.
+    var fractionLeft: Double? {
+        guard limit > 0 else { return nil }
+        return max(0, 1 - Double(stats.blockWork) / Double(limit))
+    }
+
+    var percentLeft: Int? { fractionLeft.map { Int(($0 * 100).rounded()) } }
+
+    /// Warn in the collapsed notch when the window is nearly used up.
+    var compactInfo: CompactInfo? {
+        guard stats.blockEnd != nil, let percent = percentLeft, percent <= 20 else { return nil }
+        return CompactInfo(icon: "sparkles", text: "\(percent)% left", priority: 12)
+    }
 
     func makeView() -> AnyView { AnyView(AIUsageView(module: self)) }
 

@@ -19,6 +19,8 @@ struct UsageStats: Equatable {
     var blockCached = 0
     /// End of the current 5-hour window, nil when no window is active.
     var blockEnd: Date?
+    /// Biggest 5-hour window seen in the last week; used as an automatic limit estimate.
+    var blockMax = 0
     var todayWork = 0
     var todayMessages = 0
     var weekWork = 0
@@ -108,21 +110,25 @@ enum UsageScanner {
             }
         }
 
-        // Walk the entries to find the current 5-hour window: it starts at the
-        // top of the hour of the first message after the previous window ended.
-        var blockStart: Date?
+        // Group entries into 5-hour windows: a window starts at the top of the hour of the
+        // first message after the previous window ended.
+        var blocks: [(start: Date, work: Int, messages: Int, cached: Int)] = []
         for entry in entries {
-            if let start = blockStart, entry.date < start.addingTimeInterval(blockLength) { continue }
-            let hour = calendar.dateInterval(of: .hour, for: entry.date)?.start ?? entry.date
-            blockStart = hour
-        }
-        if let start = blockStart, now < start.addingTimeInterval(blockLength) {
-            stats.blockEnd = start.addingTimeInterval(blockLength)
-            for entry in entries where entry.date >= start {
-                stats.blockWork += entry.work
-                stats.blockMessages += 1
-                stats.blockCached += entry.cacheCreation + entry.cacheRead
+            if let last = blocks.last, entry.date < last.start.addingTimeInterval(blockLength) {
+                blocks[blocks.count - 1].work += entry.work
+                blocks[blocks.count - 1].messages += 1
+                blocks[blocks.count - 1].cached += entry.cacheCreation + entry.cacheRead
+            } else {
+                let hour = calendar.dateInterval(of: .hour, for: entry.date)?.start ?? entry.date
+                blocks.append((hour, entry.work, 1, entry.cacheCreation + entry.cacheRead))
             }
+        }
+        stats.blockMax = blocks.map(\.work).max() ?? 0
+        if let current = blocks.last, now < current.start.addingTimeInterval(blockLength) {
+            stats.blockEnd = current.start.addingTimeInterval(blockLength)
+            stats.blockWork = current.work
+            stats.blockMessages = current.messages
+            stats.blockCached = current.cached
         }
         return stats
     }
