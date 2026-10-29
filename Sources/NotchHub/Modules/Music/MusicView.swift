@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MusicView: View {
     @ObservedObject var module: MusicModule
+    @State private var dragPosition: Double?
 
     var body: some View {
         if module.permissionDenied {
@@ -28,11 +29,24 @@ struct MusicView: View {
 
                 Spacer(minLength: 4)
 
-                ProgressView(value: min(s.position, max(s.duration, 1)), total: max(s.duration, 1))
-                    .progressViewStyle(.linear)
-                    .tint(.white)
+                // While dragging, show the dragged value; the 1s poll must not fight the thumb.
+                Slider(
+                    value: Binding(
+                        get: { dragPosition ?? min(s.position, max(s.duration, 1)) },
+                        set: { dragPosition = $0 }
+                    ),
+                    in: 0...max(s.duration, 1)
+                ) { editing in
+                    if !editing, let target = dragPosition {
+                        module.seek(to: target)
+                        dragPosition = nil
+                    }
+                }
+                .controlSize(.small)
+                .tint(.white)
+                .disabled(module.live == nil)
                 HStack {
-                    Text(format(s.position))
+                    Text(format(dragPosition ?? s.position))
                     Spacer()
                     Text(format(s.duration))
                 }

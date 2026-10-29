@@ -156,6 +156,15 @@ final class MusicModule: NotchModule, ObservableObject {
         }
     }
 
+    /// Jumps to `seconds` in the current track.
+    func seek(to seconds: Double) {
+        guard isRunning else { return }
+        live?.position = seconds // optimistic update so the slider doesn't jump back
+        AppleScriptRunner.shared.run("tell application \"Music\" to set player position to \(Int(seconds))") { [weak self] _ in
+            self?.poll()
+        }
+    }
+
     func next() { send("next track") }
     func previous() { send("previous track") }
 
