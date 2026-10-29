@@ -4,73 +4,122 @@ struct TimerView: View {
     @ObservedObject var module: TimerModule
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Picker("", selection: $module.mode) {
                 ForEach(TimerModule.Mode.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 280)
+            .frame(width: 300)
 
-            HStack(spacing: 28) {
-                presetColumn
-                    .frame(width: 130, alignment: .trailing)
-
-                VStack(spacing: 2) {
-                    Text(TimerModule.format(module.displayTime))
-                        .font(.system(size: 44, weight: .light, design: .rounded).monospacedDigit())
-                    if module.mode == .pomodoro {
-                        Text("\(module.phase.label) · \(module.completedPomodoros) done")
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
+            Group {
+                switch module.mode {
+                case .countdown: countdown
+                case .stopwatch: stopwatch
+                case .alarm: alarm
                 }
-                .frame(minWidth: 160)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
 
+    // MARK: Timer
+
+    @ViewBuilder
+    private var countdown: some View {
+        if module.countdownIsIdle {
+            // Wheels, like the Clock app on iPhone.
+            HStack(spacing: 34) {
+                HStack(spacing: 6) {
+                    wheel($module.countdownHours, 0...23, "h")
+                    wheel($module.countdownMinutes, 0...59, "min")
+                    wheel($module.countdownSeconds, 0...59, "s")
+                }
+                roundButton("play.fill", prominent: true) { module.startCountdown() }
+                    .disabled(module.countdownTotal == 0)
+                    .opacity(module.countdownTotal == 0 ? 0.4 : 1)
+            }
+        } else {
+            HStack(spacing: 34) {
+                bigTime(TimerModule.format(module.countdownRemaining))
                 HStack(spacing: 10) {
-                    roundButton(module.isRunning ? "pause.fill" : "play.fill", prominent: true) { module.toggle() }
-                    roundButton("arrow.counterclockwise") { module.reset() }
-                    if module.mode == .pomodoro {
-                        roundButton("forward.end.fill") { module.skipPhase() }
-                    }
+                    roundButton(module.countdownRunning ? "pause.fill" : "play.fill", prominent: true) { module.toggleCountdown() }
+                    roundButton("xmark") { module.resetCountdown() }
                 }
-                .frame(width: 130, alignment: .leading)
             }
         }
     }
 
-    /// Quick presets (countdown) or a short hint for the other modes.
-    @ViewBuilder
-    private var presetColumn: some View {
-        switch module.mode {
-        case .countdown:
-            VStack(alignment: .trailing, spacing: 6) {
-                HStack(spacing: 4) {
-                    ForEach([1, 5, 10, 25], id: \.self) { minutes in
-                        Button("\(minutes)") { module.countdownMinutes = minutes }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 11, weight: .medium))
-                            .frame(width: 26, height: 20)
-                            .background(Capsule().fill(Color.white.opacity(module.countdownMinutes == minutes ? 0.25 : 0.1)))
-                    }
-                }
-                Stepper("\(module.countdownMinutes) min", value: $module.countdownMinutes, in: 1...180)
-                    .font(.system(size: 11))
-                    .disabled(module.isRunning)
+    // MARK: Stopwatch
+
+    private var stopwatch: some View {
+        HStack(spacing: 34) {
+            bigTime(TimerModule.format(module.stopwatchElapsed))
+            HStack(spacing: 10) {
+                roundButton(module.stopwatchRunning ? "pause.fill" : "play.fill", prominent: true) { module.toggleStopwatch() }
+                roundButton("arrow.counterclockwise") { module.resetStopwatch() }
             }
-        case .stopwatch:
-            Text("Counts up").font(.system(size: 11)).foregroundStyle(.secondary)
-        case .pomodoro:
-            Text("25 / 5 · long break every 4")
-                .font(.system(size: 11)).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
         }
+    }
+
+    // MARK: Alarm
+
+    private var alarm: some View {
+        HStack(spacing: 34) {
+            HStack(spacing: 4) {
+                wheel($module.alarmHour, 0...23, nil)
+                Text(":").font(.system(size: 22, weight: .semibold, design: .rounded))
+                wheel($module.alarmMinute, 0...59, nil)
+            }
+
+            VStack(spacing: 10) {
+                if module.isRinging {
+                    Text("Alarm!").font(.system(size: 22, weight: .semibold))
+                    Button("Stop") { module.stopRinging() }
+                        .buttonStyle(.borderedProminent).tint(.orange)
+                } else {
+                    // Updates every second so it stays correct while you spin the wheels.
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        VStack(spacing: 2) {
+                            Text(module.alarmArmed ? "Rings in" : "Would ring in")
+                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                            Text(TimerModule.timeUntil(hour: module.alarmHour, minute: module.alarmMinute, now: context.date))
+                                .font(.system(size: 24, weight: .semibold, design: .rounded))
+                        }
+                    }
+                    Button(module.alarmArmed ? "Turn off" : "Set alarm") { module.toggleAlarm() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(module.alarmArmed ? .gray : .orange)
+                }
+            }
+            .frame(width: 170)
+        }
+    }
+
+    // MARK: Pieces
+
+    private func wheel(_ value: Binding<Int>, _ range: ClosedRange<Int>, _ unit: String?) -> some View {
+        HStack(spacing: 2) {
+            WheelPicker(value: value, range: range)
+            if let unit {
+                Text(unit).font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 22, alignment: .leading)
+            }
+        }
+    }
+
+    private func bigTime(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 52, weight: .light, design: .rounded).monospacedDigit())
+            .frame(minWidth: 190)
     }
 
     private func roundButton(_ symbol: String, prominent: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: prominent ? 16 : 13, weight: .semibold))
-                .frame(width: prominent ? 40 : 32, height: prominent ? 40 : 32)
+                .font(.system(size: prominent ? 18 : 14, weight: .semibold))
+                .frame(width: prominent ? 46 : 36, height: prominent ? 46 : 36)
                 .background(Circle().fill(Color.white.opacity(prominent ? 0.25 : 0.12)))
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
     }

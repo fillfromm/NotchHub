@@ -1,167 +1,245 @@
-import Foundation
+import AppKit
 import SwiftUI
 
-/// Countdown, stopwatch and Pomodoro in one module.
+/// Countdown timer, stopwatch and alarm clock in one module.
 ///
-/// Time is derived from wall-clock dates (not tick counting), so it stays
-/// accurate even if the run loop is delayed.
+/// The three tools are independent: switching tabs never stops one that is running.
+/// Times are derived from wall-clock dates (not tick counting), so they stay accurate
+/// even if the run loop is delayed.
 final class TimerModule: NotchModule, ObservableObject {
     enum Mode: String, CaseIterable, Identifiable {
         case countdown = "Timer"
         case stopwatch = "Stopwatch"
-        case pomodoro = "Pomodoro"
+        case alarm = "Alarm"
         var id: String { rawValue }
     }
 
-    enum PomodoroPhase {
-        case work, shortBreak, longBreak
-
-        var label: String {
-            switch self {
-            case .work: return "Focus"
-            case .shortBreak: return "Short break"
-            case .longBreak: return "Long break"
-            }
-        }
-        var duration: TimeInterval {
-            switch self {
-            case .work: return 25 * 60
-            case .shortBreak: return 5 * 60
-            case .longBreak: return 15 * 60
-            }
-        }
-    }
-
     let id = "timer"
-    let title = "Timer"
+    let title = "Timer & Alarm"
     let icon = "timer"
 
-    @Published var mode: Mode = .countdown {
-        didSet { if mode != oldValue { reset() } }
-    }
-    /// Seconds shown on screen (remaining for countdown/pomodoro, elapsed for stopwatch).
-    @Published private(set) var displayTime: TimeInterval = 5 * 60
-    @Published private(set) var isRunning = false
-    /// Configured countdown length in minutes.
-    @Published var countdownMinutes = 5 {
-        didSet { if mode == .countdown, !isRunning { reset() } }
-    }
-    @Published private(set) var phase: PomodoroPhase = .work
-    @Published private(set) var completedPomodoros = 0
+    private static let alarmHourKey = "alarm.hour"
+    private static let alarmMinuteKey = "alarm.minute"
+    private static let alarmArmedKey = "alarm.armed"
 
-    private var timer: Timer?
-    private var endDate: Date?          // countdown / pomodoro: when it hits zero
-    private var startDate: Date?        // stopwatch: when the current run started
-    private var accumulated: TimeInterval = 0 // stopwatch: time from earlier runs
+    @Published var mode: Mode = .countdown
+
+    // MARK: Countdown state
+
+    @Published var countdownHours = 0 { didSet { syncIdleCountdown() } }
+    @Published var countdownMinutes = 5 { didSet { syncIdleCountdown() } }
+    @Published var countdownSeconds = 0 { didSet { syncIdleCountdown() } }
+    @Published private(set) var countdownRemaining: TimeInterval = 5 * 60
+    @Published private(set) var countdownRunning = false
+    private var countdownEnd: Date?
+
+    // MARK: Stopwatch state
+
+    @Published private(set) var stopwatchElapsed: TimeInterval = 0
+    @Published private(set) var stopwatchRunning = false
+    private var stopwatchStart: Date?
+    private var stopwatchAccumulated: TimeInterval = 0
+
+    // MARK: Alarm state
+
+    @Published var alarmHour: Int { didSet { alarmTimeChanged() } }
+    @Published var alarmMinute: Int { didSet { alarmTimeChanged() } }
+    @Published private(set) var alarmArmed = false
+    @Published private(set) var isRinging = false
+    private var alarmTarget: Date?
+    private var alarmTimer: Timer?
+    private var ringTimer: Timer?
+    private var ringCount = 0
+
+    private var ticker: Timer?
 
     init() {
-        displayTime = TimeInterval(countdownMinutes * 60)
+        let defaults = UserDefaults.standard
+        let savedHour = defaults.object(forKey: Self.alarmHourKey) as? Int
+        alarmHour = savedHour ?? 7
+        alarmMinute = defaults.object(forKey: Self.alarmMinuteKey) as? Int ?? 0
+        if defaults.bool(forKey: Self.alarmArmedKey) { armAlarm() }
     }
 
-    deinit { timer?.invalidate() }
+    deinit { ticker?.invalidate(); alarmTimer?.invalidate(); ringTimer?.invalidate() }
 
     var compactInfo: CompactInfo? {
-        // Show only while running, or while a paused countdown is partially elapsed.
-        guard isRunning else { return nil }
-        return CompactInfo(icon: mode == .stopwatch ? "stopwatch" : "timer", text: Self.format(displayTime), priority: 20)
+        if isRinging { return CompactInfo(icon: "alarm.fill", text: "Wake up!", priority: 40) }
+        if countdownRunning { return CompactInfo(icon: "timer", text: Self.format(countdownRemaining), priority: 20) }
+        if stopwatchRunning { return CompactInfo(icon: "stopwatch", text: Self.format(stopwatchElapsed), priority: 19) }
+        if alarmArmed, let target = alarmTarget, target.timeIntervalSinceNow <= 3600 {
+            return CompactInfo(icon: "alarm", text: "in \(max(1, Int((target.timeIntervalSinceNow / 60).rounded(.up))))m", priority: 15)
+        }
+        return nil
     }
 
     func makeView() -> AnyView { AnyView(TimerView(module: self)) }
 
-    // MARK: Controls
+    // MARK: Countdown
 
-    func toggle() { isRunning ? pause() : start() }
+    var countdownTotal: TimeInterval {
+        TimeInterval(countdownHours * 3600 + countdownMinutes * 60 + countdownSeconds)
+    }
 
-    func start() {
-        guard !isRunning else { return }
+    /// True while the wheels (not the running digits) should be shown.
+    var countdownIsIdle: Bool {
+        !countdownRunning && countdownRemaining == countdownTotal
+    }
+
+    /// While idle, the displayed time follows the wheels.
+    private func syncIdleCountdown() {
+        if !countdownRunning { countdownRemaining = countdownTotal }
+    }
+
+    func toggleCountdown() {
+        if countdownRunning { pauseCountdown() } else { startCountdown() }
+    }
+
+    func startCountdown() {
+        guard !countdownRunning, countdownRemaining > 0 else { return }
         Notifier.requestAuthorization()
-        switch mode {
-        case .stopwatch:
-            startDate = Date()
-        case .countdown, .pomodoro:
-            if displayTime <= 0 { displayTime = fullDuration }
-            endDate = Date().addingTimeInterval(displayTime)
+        countdownEnd = Date().addingTimeInterval(countdownRemaining)
+        countdownRunning = true
+        startTicker()
+    }
+
+    func pauseCountdown() {
+        tick()
+        countdownRunning = false
+        countdownEnd = nil
+    }
+
+    func resetCountdown() {
+        countdownRunning = false
+        countdownEnd = nil
+        countdownRemaining = countdownTotal
+    }
+
+    private func finishCountdown() {
+        countdownRunning = false
+        countdownEnd = nil
+        countdownRemaining = countdownTotal
+        Notifier.notify(title: "Timer finished", body: "\(Self.format(countdownTotal)) timer is done.")
+    }
+
+    // MARK: Stopwatch
+
+    func toggleStopwatch() {
+        if stopwatchRunning {
+            tick()
+            stopwatchAccumulated = stopwatchElapsed
+            stopwatchStart = nil
+            stopwatchRunning = false
+        } else {
+            stopwatchStart = Date()
+            stopwatchRunning = true
+            startTicker()
         }
-        isRunning = true
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+    }
+
+    func resetStopwatch() {
+        stopwatchRunning = false
+        stopwatchStart = nil
+        stopwatchAccumulated = 0
+        stopwatchElapsed = 0
+    }
+
+    // MARK: Ticking (countdown + stopwatch)
+
+    private func startTicker() {
+        guard ticker == nil else { return }
+        ticker = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
     }
 
-    func pause() {
-        guard isRunning else { return }
-        tick()
-        if mode == .stopwatch { accumulated = displayTime; startDate = nil }
-        stopTimer()
-    }
-
-    func reset() {
-        stopTimer()
-        accumulated = 0
-        startDate = nil
-        endDate = nil
-        if mode == .pomodoro { phase = .work }
-        displayTime = mode == .stopwatch ? 0 : fullDuration
-    }
-
-    /// Jumps to the next Pomodoro phase without waiting for the timer.
-    func skipPhase() {
-        guard mode == .pomodoro else { return }
-        advancePomodoro(countCompleted: false)
-    }
-
-    /// Full length of the current countdown / pomodoro phase.
-    private var fullDuration: TimeInterval {
-        mode == .pomodoro ? phase.duration : TimeInterval(countdownMinutes * 60)
-    }
-
-    // MARK: Ticking
-
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
-        isRunning = false
-    }
-
     private func tick() {
-        switch mode {
-        case .stopwatch:
-            displayTime = accumulated + (startDate.map { Date().timeIntervalSince($0) } ?? 0)
-        case .countdown, .pomodoro:
-            guard let endDate else { return }
-            displayTime = max(0, endDate.timeIntervalSinceNow)
-            if displayTime <= 0 { finish() }
+        let now = Date()
+        if countdownRunning, let end = countdownEnd {
+            countdownRemaining = max(0, end.timeIntervalSince(now))
+            if countdownRemaining <= 0 { finishCountdown() }
+        }
+        if stopwatchRunning, let start = stopwatchStart {
+            stopwatchElapsed = stopwatchAccumulated + now.timeIntervalSince(start)
+        }
+        if !countdownRunning && !stopwatchRunning {
+            ticker?.invalidate()
+            ticker = nil
         }
     }
 
-    private func finish() {
-        stopTimer()
-        switch mode {
-        case .countdown:
-            Notifier.notify(title: "Timer finished", body: "\(countdownMinutes) minute timer is done.")
-            displayTime = fullDuration
-        case .pomodoro:
-            Notifier.notify(title: "\(phase.label) finished",
-                            body: phase == .work ? "Time for a break." : "Back to focus.")
-            advancePomodoro(countCompleted: true)
-            start() // phases chain automatically
-        case .stopwatch:
-            break
+    // MARK: Alarm
+
+    func toggleAlarm() {
+        if alarmArmed { disarmAlarm() } else { armAlarm() }
+    }
+
+    private func armAlarm() {
+        Notifier.requestAuthorization()
+        alarmTarget = Self.nextOccurrence(hour: alarmHour, minute: alarmMinute)
+        alarmArmed = true
+        UserDefaults.standard.set(true, forKey: Self.alarmArmedKey)
+        alarmTimer?.invalidate()
+        alarmTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.alarmTick() }
         }
     }
 
-    /// work → short break (long break after every 4th) → work …
-    private func advancePomodoro(countCompleted: Bool) {
-        let wasRunning = isRunning
-        stopTimer()
-        if phase == .work {
-            if countCompleted { completedPomodoros += 1 }
-            phase = (completedPomodoros > 0 && completedPomodoros % 4 == 0) ? .longBreak : .shortBreak
-        } else {
-            phase = .work
+    private func disarmAlarm() {
+        alarmArmed = false
+        alarmTarget = nil
+        alarmTimer?.invalidate()
+        alarmTimer = nil
+        UserDefaults.standard.set(false, forKey: Self.alarmArmedKey)
+    }
+
+    /// Changing the time while the alarm is on re-arms it for the new time.
+    private func alarmTimeChanged() {
+        UserDefaults.standard.set(alarmHour, forKey: Self.alarmHourKey)
+        UserDefaults.standard.set(alarmMinute, forKey: Self.alarmMinuteKey)
+        if alarmArmed { alarmTarget = Self.nextOccurrence(hour: alarmHour, minute: alarmMinute) }
+    }
+
+    private func alarmTick() {
+        guard let target = alarmTarget else { return }
+        if Date() >= target { fireAlarm() } else { objectWillChange.send() } // keeps "in 12m" fresh
+    }
+
+    private func fireAlarm() {
+        disarmAlarm() // one-shot, like a phone alarm without repeat
+        isRinging = true
+        ringCount = 0
+        Notifier.notify(title: "Alarm", body: String(format: "It's %02d:%02d.", alarmHour, alarmMinute))
+        ringTimer?.invalidate()
+        ringTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.ringCount += 1
+                NSSound(named: "Glass")?.play()
+                if self.ringCount >= 20 { self.stopRinging() } // stop by itself after ~30s
+            }
         }
-        displayTime = phase.duration
-        if wasRunning { start() }
+    }
+
+    func stopRinging() {
+        isRinging = false
+        ringTimer?.invalidate()
+        ringTimer = nil
+    }
+
+    /// Next time the clock shows `hour:minute` (today if still ahead, otherwise tomorrow).
+    static func nextOccurrence(hour: Int, minute: Int, after date: Date = Date()) -> Date {
+        Calendar.current.nextDate(after: date, matching: DateComponents(hour: hour, minute: minute, second: 0),
+                                  matchingPolicy: .nextTime) ?? date
+    }
+
+    /// "7 h 25 min" until the next occurrence of `hour:minute`.
+    static func timeUntil(hour: Int, minute: Int, now: Date = Date()) -> String {
+        let seconds = nextOccurrence(hour: hour, minute: minute, after: now).timeIntervalSince(now)
+        let total = max(1, Int((seconds / 60).rounded(.up)))
+        let h = total / 60, m = total % 60
+        if h == 0 { return "\(m) min" }
+        return m == 0 ? "\(h) h" : "\(h) h \(m) min"
     }
 
     // MARK: Formatting

@@ -35,7 +35,7 @@ NotchHub has no Dock icon: look for the menu bar icon and the notch itself.
 | Module | What it does |
 |---|---|
 | Music | Now playing, artwork, play/pause/next/previous for Apple Music via AppleScript; remembers the last track (no private MediaRemote) |
-| Timer | Countdown, stopwatch, Pomodoro (25/5, long break every 4); notification + sound on finish |
+| Timer & Alarm | Countdown with iPhone-style wheels, stopwatch, alarm clock that shows "rings in 7 h 25 min"; notification + sound |
 | Clipboard | Last 30 text items, click to re-copy, pin, delete, clear. Stored locally; items marked concealed by password managers are skipped |
 | Calculator | Expression input with live result, history, functions (`sqrt sin cos tan ln log abs`, `pi`, `e`) |
 | AI usage | Reads Claude Code logs in `~/.claude/projects`: current 5h window, today, last 7 days. Optional token budget bar. API integration is a placeholder; no keys anywhere |
