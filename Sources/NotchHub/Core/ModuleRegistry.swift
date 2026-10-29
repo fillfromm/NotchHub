@@ -30,6 +30,8 @@ final class ModuleRegistry: ObservableObject {
         [
             MusicModule(),
             TimerModule(),
+            ClipboardModule(),
+            CalculatorModule(),
         ]
     }
 
