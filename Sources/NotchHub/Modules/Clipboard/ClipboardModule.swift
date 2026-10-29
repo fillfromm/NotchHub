@@ -6,6 +6,8 @@ struct ClipItem: Codable, Identifiable, Equatable {
     var text: String
     var pinned = false
     var date = Date()
+    /// Optional short name for pinned snippets, e.g. "Email" or "LinkedIn".
+    var label: String?
 }
 
 /// Text clipboard history (last ~30 items) with pinning. Stored locally only.
@@ -54,13 +56,11 @@ final class ClipboardModule: NotchModule, ObservableObject {
     }
 
     private func add(_ text: String) {
-        // Re-copying an existing entry moves it to the top and keeps its pin.
-        var pinned = false
-        if let index = items.firstIndex(where: { $0.text == text }) {
-            pinned = items[index].pinned
-            items.remove(at: index)
-        }
-        items.insert(ClipItem(text: text, pinned: pinned), at: 0)
+        // Text that is already pinned stays in the pinned list, not in history.
+        if items.contains(where: { $0.text == text && $0.pinned }) { return }
+        // Re-copying a history entry moves it to the top.
+        items.removeAll { $0.text == text }
+        items.insert(ClipItem(text: text), at: 0)
         trim()
         persist()
     }
@@ -100,9 +100,19 @@ final class ClipboardModule: NotchModule, ObservableObject {
         persist()
     }
 
-    /// Pinned items first, then newest first.
-    var sortedItems: [ClipItem] {
-        items.filter(\.pinned) + items.filter { !$0.pinned }
+    /// Recent copies, newest first.
+    var history: [ClipItem] { items.filter { !$0.pinned } }
+
+    /// Items you keep on purpose (shown in the separate "Pinned" page).
+    var pinnedItems: [ClipItem] { items.filter(\.pinned) }
+
+    /// Adds a pinned snippet by hand (an email address, a profile link…).
+    func addSnippet(label: String, text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        items.insert(ClipItem(text: trimmed, pinned: true, label: name.isEmpty ? nil : name), at: 0)
+        persist()
     }
 
     private func persist() {
