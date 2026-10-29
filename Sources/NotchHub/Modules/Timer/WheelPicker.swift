@@ -60,6 +60,8 @@ private struct WheelInput: NSViewRepresentable {
     final class InputView: NSView {
         var rowHeight: CGFloat = 26
         var onStep: (Int) -> Void = { _ in }
+        /// Overall wheel speed; lower = slower, easier to land on an exact value.
+        private let sensitivity: CGFloat = 0.9
         private var scrollAccumulator: CGFloat = 0
         private var dragAccumulator: CGFloat = 0
         private var lastDragY: CGFloat = 0
@@ -70,7 +72,7 @@ private struct WheelInput: NSViewRepresentable {
         override func scrollWheel(with event: NSEvent) {
             // Trackpads send many small deltas, mice a few big ones.
             let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY / 14 : event.scrollingDeltaY
-            scrollAccumulator += delta
+            scrollAccumulator += delta * sensitivity
             while scrollAccumulator <= -1 { onStep(1); scrollAccumulator += 1 }
             while scrollAccumulator >= 1 { onStep(-1); scrollAccumulator -= 1 }
         }
@@ -82,7 +84,7 @@ private struct WheelInput: NSViewRepresentable {
 
         override func mouseDragged(with event: NSEvent) {
             // Dragging up moves the wheel up, so later values come into view.
-            dragAccumulator += event.locationInWindow.y - lastDragY
+            dragAccumulator += (event.locationInWindow.y - lastDragY) * sensitivity
             lastDragY = event.locationInWindow.y
             while dragAccumulator >= rowHeight { onStep(1); dragAccumulator -= rowHeight }
             while dragAccumulator <= -rowHeight { onStep(-1); dragAccumulator += rowHeight }
