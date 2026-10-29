@@ -34,7 +34,7 @@ NotchHub has no Dock icon: look for the menu bar icon and the notch itself.
 
 | Module | What it does |
 |---|---|
-| Music | Now playing, artwork, play/pause/next/previous for Apple Music and Spotify via AppleScript (no private MediaRemote) |
+| Music | Now playing, artwork, play/pause/next/previous for Apple Music via AppleScript; remembers the last track (no private MediaRemote) |
 | Timer | Countdown, stopwatch, Pomodoro (25/5, long break every 4); notification + sound on finish |
 | Clipboard | Last 30 text items, click to re-copy, pin, delete, clear. Stored locally; items marked concealed by password managers are skipped |
 | Calculator | Expression input with live result, history, functions (`sqrt sin cos tan ln log abs`, `pi`, `e`) |
@@ -47,7 +47,7 @@ While collapsed, the highest-priority module with live info (timer > calendar > 
 
 ## Permissions
 
-- **Automation (Music / Spotify):** macOS asks the first time a player is running while NotchHub polls it. If you click Don't Allow, the Music tab says so and links to System Settings › Privacy & Security › Automation. NotchHub never launches a player on its own.
+- **Automation (Music):** macOS asks the first time Music is running while NotchHub polls it. If you click Don't Allow, the Music tab says so and links to System Settings › Privacy & Security › Automation. NotchHub only launches Music when you press play while it is closed.
 - **Calendars:** requested only when you press "Allow calendar access" in the Calendar tab.
 - **Notifications:** requested when you first start a timer.
 - Clipboard, system stats and Claude logs need no permission. No data leaves your Mac.

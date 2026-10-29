@@ -1,74 +1,56 @@
 import AppKit
 import SwiftUI
 
-/// The two supported players, controlled via AppleScript.
-enum MusicPlayer: CaseIterable {
-    case appleMusic
-    case spotify
-
-    var appName: String { self == .appleMusic ? "Music" : "Spotify" }
-    var bundleID: String { self == .appleMusic ? "com.apple.Music" : "com.spotify.client" }
-
-    /// Running check that does NOT launch the app (a bare `tell application` would).
-    var isRunning: Bool {
-        !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
-    }
-
-    /// One line: `state|||title|||artist|||album|||duration(sec)|||position(sec)|||artworkURL`.
-    var pollScript: String {
-        switch self {
-        case .appleMusic:
-            return """
-            tell application "Music"
-                if player state is stopped then return "stopped"
-                set st to "paused"
-                if player state is playing then set st to "playing"
-                set t to current track
-                return st & "|||" & (name of t) & "|||" & (artist of t) & "|||" & (album of t) & "|||" & ((duration of t as integer) as string) & "|||" & ((player position as integer) as string) & "|||"
-            end tell
-            """
-        case .spotify:
-            return """
-            tell application "Spotify"
-                if player state is stopped then return "stopped"
-                set st to "paused"
-                if player state is playing then set st to "playing"
-                set t to current track
-                return st & "|||" & (name of t) & "|||" & (artist of t) & "|||" & (album of t) & "|||" & (((duration of t) / 1000) as integer as string) & "|||" & ((player position as integer) as string) & "|||" & (artwork url of t)
-            end tell
-            """
-        }
-    }
-}
-
-/// What one player is currently doing.
-struct PlayerSnapshot: Equatable {
+/// What Apple Music is currently doing.
+struct TrackSnapshot: Equatable, Codable {
     var isPlaying: Bool
     var title: String
     var artist: String
     var album: String
     var duration: Double
     var position: Double
-    var artworkURL: String
 }
 
-/// Now-playing info and transport controls for Apple Music and Spotify.
+/// Now-playing info and transport controls for Apple Music, via AppleScript.
+///
+/// The last known track is remembered (even across launches), so the notch can
+/// always show it and the play button can resume it.
 final class MusicModule: NotchModule, ObservableObject {
     let id = "music"
     let title = "Music"
     let icon = "music.note"
 
-    @Published private(set) var snapshot: PlayerSnapshot?
-    @Published private(set) var activePlayer: MusicPlayer?
-    @Published private(set) var artwork: NSImage?
-    /// Players for which macOS denied the Automation permission.
-    @Published private(set) var denied: Set<MusicPlayer> = []
+    private static let bundleID = "com.apple.Music"
+    private static let lastTrackKey = "music.lastTrack"
 
-    private var snapshots: [MusicPlayer: PlayerSnapshot] = [:]
+    /// One line: `state|||title|||artist|||album|||duration(sec)|||position(sec)|||`.
+    /// Note: avoid short variable names like `st` — they can clash with Music's dictionary terms.
+    private static let pollScript = """
+    tell application "Music"
+        if player state is stopped then return "stopped"
+        set stateText to "paused"
+        if player state is playing then set stateText to "playing"
+        set trk to current track
+        return stateText & "|||" & (name of trk) & "|||" & (artist of trk) & "|||" & (album of trk) & "|||" & ((duration of trk as integer) as string) & "|||" & ((player position as integer) as string) & "|||"
+    end tell
+    """
+
+    /// Live state from Music; nil when Music is closed or has nothing loaded.
+    @Published private(set) var live: TrackSnapshot?
+    /// Last track we saw, kept when Music stops or quits.
+    @Published private(set) var last: TrackSnapshot?
+    @Published private(set) var artwork: NSImage?
+    @Published private(set) var permissionDenied = false
+
     private var timer: Timer?
     private var artworkKey = ""
 
     init() {
+        if let data = UserDefaults.standard.data(forKey: Self.lastTrackKey),
+           var saved = try? JSONDecoder().decode(TrackSnapshot.self, from: data) {
+            saved.isPlaying = false
+            last = saved
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
@@ -77,9 +59,17 @@ final class MusicModule: NotchModule, ObservableObject {
 
     deinit { timer?.invalidate() }
 
+    /// What the UI shows: live track, else the last one played.
+    var display: TrackSnapshot? { live ?? last }
+    var isPlaying: Bool { live?.isPlaying == true }
+
+    private var isRunning: Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).isEmpty
+    }
+
     var compactInfo: CompactInfo? {
-        guard let snapshot, snapshot.isPlaying else { return nil }
-        return CompactInfo(icon: "music.note", text: snapshot.title, priority: 10)
+        guard let track = display else { return nil }
+        return CompactInfo(icon: isPlaying ? "music.note" : "pause.fill", text: track.title, priority: 10)
     }
 
     func makeView() -> AnyView { AnyView(MusicView(module: self)) }
@@ -87,94 +77,107 @@ final class MusicModule: NotchModule, ObservableObject {
     // MARK: Polling
 
     private func poll() {
-        for player in MusicPlayer.allCases {
-            guard player.isRunning else {
-                snapshots[player] = nil
-                denied.remove(player)
-                continue
-            }
-            AppleScriptRunner.shared.run(player.pollScript) { [weak self] result in
-                self?.handle(result, for: player)
-            }
+        // Checking first avoids launching Music: a bare `tell application` would start it.
+        guard isRunning else {
+            if live != nil { live = nil }
+            permissionDenied = false
+            return
         }
-        reconcile()
+        AppleScriptRunner.shared.run(Self.pollScript) { [weak self] result in
+            self?.handle(result)
+        }
     }
 
-    private func handle(_ result: ScriptResult, for player: MusicPlayer) {
+    private func handle(_ result: ScriptResult) {
         switch result {
         case .success(let descriptor):
-            denied.remove(player)
-            snapshots[player] = Self.parse(descriptor.stringValue ?? "")
-        case .failure(let code, _):
-            snapshots[player] = nil
-            if code == AppleScriptRunner.notAuthorized { denied.insert(player) }
+            permissionDenied = false
+            guard let snapshot = Self.parse(descriptor.stringValue ?? "") else {
+                live = nil // stopped / nothing loaded: keep showing `last`
+                return
+            }
+            if snapshot != live { live = snapshot }
+            remember(snapshot)
+            loadArtworkIfNeeded(for: snapshot)
+        case .failure(let code, let message):
+            live = nil
+            if code == AppleScriptRunner.notAuthorized {
+                permissionDenied = true
+            } else {
+                NSLog("NotchHub: Music script failed (\(code)): \(message)")
+            }
         }
-        reconcile()
     }
 
-    static func parse(_ line: String) -> PlayerSnapshot? {
+    static func parse(_ line: String) -> TrackSnapshot? {
         let parts = line.components(separatedBy: "|||")
-        guard parts.count >= 7 else { return nil }
-        return PlayerSnapshot(
+        guard parts.count >= 6 else { return nil }
+        return TrackSnapshot(
             isPlaying: parts[0] == "playing",
             title: parts[1], artist: parts[2], album: parts[3],
-            duration: Double(parts[4]) ?? 0, position: Double(parts[5]) ?? 0,
-            artworkURL: parts[6]
+            duration: Double(parts[4]) ?? 0, position: Double(parts[5]) ?? 0
         )
     }
 
-    /// Picks the player to show: one that is playing, otherwise any with a track.
-    private func reconcile() {
-        let playing = MusicPlayer.allCases.first { snapshots[$0]?.isPlaying == true }
-        let any = MusicPlayer.allCases.first { snapshots[$0] != nil }
-        let chosen = playing ?? any
-        if chosen != activePlayer { activePlayer = chosen }
-        let next = chosen.flatMap { snapshots[$0] }
-        if next != snapshot { snapshot = next }
-        if let chosen, let next { loadArtworkIfNeeded(player: chosen, snapshot: next) }
-        else if artwork != nil { artwork = nil; artworkKey = "" }
+    /// Persists the track (not the position) whenever it changes.
+    private func remember(_ snapshot: TrackSnapshot) {
+        var stored = snapshot
+        stored.isPlaying = false
+        stored.position = 0
+        guard stored.title != last?.title || stored.artist != last?.artist else { return }
+        last = stored
+        if let data = try? JSONEncoder().encode(stored) {
+            UserDefaults.standard.set(data, forKey: Self.lastTrackKey)
+        }
     }
 
     // MARK: Artwork
 
-    private func loadArtworkIfNeeded(player: MusicPlayer, snapshot: PlayerSnapshot) {
-        let key = "\(player.appName)|\(snapshot.title)|\(snapshot.artist)|\(snapshot.album)"
+    private func loadArtworkIfNeeded(for snapshot: TrackSnapshot) {
+        let key = "\(snapshot.title)|\(snapshot.artist)|\(snapshot.album)"
         guard key != artworkKey else { return }
         artworkKey = key
         artwork = nil
-
-        switch player {
-        case .spotify:
-            guard let url = URL(string: snapshot.artworkURL) else { return }
-            URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-                guard let data, let image = NSImage(data: data) else { return }
-                DispatchQueue.main.async { if self?.artworkKey == key { self?.artwork = image } }
-            }.resume()
-        case .appleMusic:
-            let script = "tell application \"Music\" to return data of artwork 1 of current track"
-            AppleScriptRunner.shared.run(script) { [weak self] result in
-                guard case .success(let descriptor) = result, self?.artworkKey == key,
-                      let image = NSImage(data: descriptor.data) else { return }
-                self?.artwork = image
-            }
+        let script = "tell application \"Music\" to return data of artwork 1 of current track"
+        AppleScriptRunner.shared.run(script) { [weak self] result in
+            guard case .success(let descriptor) = result, self?.artworkKey == key,
+                  let image = NSImage(data: descriptor.data) else { return }
+            self?.artwork = image
         }
     }
 
     // MARK: Controls
 
-    func togglePlayPause() { send("playpause") }
+    func togglePlayPause() {
+        if isRunning {
+            send("playpause")
+        } else {
+            launchAndPlay()
+        }
+    }
+
     func next() { send("next track") }
     func previous() { send("previous track") }
 
     private func send(_ command: String) {
-        guard let player = activePlayer else { return }
-        AppleScriptRunner.shared.run("tell application \"\(player.appName)\" to \(command)") { [weak self] _ in
+        guard isRunning else { return }
+        AppleScriptRunner.shared.run("tell application \"Music\" to \(command)") { [weak self] _ in
             self?.poll()
         }
     }
 
-    func launch(_ player: MusicPlayer) {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: player.bundleID) else { return }
+    /// Music is closed: open it, then resume playback.
+    private func launchAndPlay() {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.bundleID) else { return }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = false
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { [weak self] _, _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self?.send("play") }
+        }
+    }
+
+    func openApp() {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.bundleID) else { return }
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 }

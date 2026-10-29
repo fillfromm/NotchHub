@@ -23,9 +23,9 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
-    <!-- Automation prompt text (Music / Spotify control via AppleScript). -->
+    <!-- Automation prompt text (Music control via AppleScript). -->
     <key>NSAppleEventsUsageDescription</key>
-    <string>NotchHub controls Apple Music and Spotify to show the current track and to play, pause and skip.</string>
+    <string>NotchHub controls Apple Music to show the current track and to play, pause and skip.</string>
     <!-- Calendar prompt text (next event module). -->
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>NotchHub shows your next calendar event in the notch.</string>
