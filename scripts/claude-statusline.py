@@ -8,8 +8,12 @@ contains `rate_limits.five_hour` and `rate_limits.seven_day` with `used_percenta
     5h: 72% left, resets in 2h 10m | 7d: 40% left, resets in 3d 4h
 """
 import json
+import os
 import sys
 import time
+
+# NotchHub reads this file, so the limits are visible outside Claude Code too.
+CACHE = os.path.expanduser("~/Library/Application Support/NotchHub/claude-limits.json")
 
 
 def left_text(window):
@@ -30,12 +34,25 @@ def left_text(window):
     return text
 
 
+def save_cache(limits):
+    """Stores the latest limits (and when they were seen) for NotchHub. Failures are ignored."""
+    try:
+        os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+        with open(CACHE + ".tmp", "w") as f:
+            json.dump({"saved_at": time.time(), "rate_limits": limits}, f)
+        os.replace(CACHE + ".tmp", CACHE)
+    except OSError:
+        pass
+
+
 def main():
     try:
         data = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         return
     limits = data.get("rate_limits") or {}
+    if limits:
+        save_cache(limits)
     parts = []
     for key, label in (("five_hour", "5h"), ("seven_day", "7d")):
         text = left_text(limits.get(key))
