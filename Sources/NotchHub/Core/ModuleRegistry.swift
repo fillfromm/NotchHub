@@ -32,6 +32,10 @@ final class ModuleRegistry: ObservableObject {
             TimerModule(),
             ClipboardModule(),
             CalculatorModule(),
+            AIUsageModule(),
+            NotesModule(),
+            SystemModule(),
+            CalendarModule(),
         ]
     }
 
