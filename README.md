@@ -37,14 +37,14 @@ NotchHub has no Dock icon: look for the menu bar icon and the notch itself.
 | Music | Now playing, artwork, play/pause/next/previous for Apple Music via AppleScript; remembers the last track (no private MediaRemote) |
 | Timer & Alarm | Countdown with iPhone-style wheels, stopwatch, alarm clock that shows "rings in 7 h 25 min"; notification + sound |
 | Clipboard | Two pages in one window: History (last 30 items) and Pinned (snippets you reuse, incl. ones you add by hand, like an email or profile link). Click to copy. Stored locally; items marked concealed by password managers are skipped |
-| Calendar | Next events (EventKit); shows "in 12m" in the collapsed notch when one is imminent |
+| Calendar | Month grid you can page through (arrows or swipe), dots on days with events or reminders, the selected day's events, and your own reminders with a notification at the chosen time. Shows "in 12m" in the collapsed notch when something is imminent |
 
 While collapsed, the highest-priority module with live info (timer > calendar > music) shows an icon and short text beside the notch.
 
 ## Permissions
 
 - **Automation (Music):** macOS asks the first time Music is running while NotchHub polls it. If you click Don't Allow, the Music tab says so and links to System Settings › Privacy & Security › Automation. NotchHub only launches Music when you press play while it is closed.
-- **Calendars:** requested only when you press "Allow calendar access" in the Calendar tab.
+- **Calendars:** requested only when you press "Show my calendar events" in the Calendar tab. Reminders work without it (stored locally; notifications are requested when you add the first one).
 - **Notifications:** requested when you first start a timer.
 - Clipboard needs no permission. No data leaves your Mac.
 

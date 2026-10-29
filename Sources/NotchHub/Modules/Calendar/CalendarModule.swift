@@ -15,7 +15,15 @@ struct CalendarEvent: Identifiable, Equatable {
     }
 }
 
-/// Upcoming events from the system calendars (EventKit, read-only).
+/// A reminder you set yourself. Stored locally; a notification fires at `date`.
+struct Reminder: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var title: String
+    var date: Date
+    var done = false
+}
+
+/// Month calendar with your system events (EventKit, read-only) and your own reminders.
 final class CalendarModule: NotchModule, ObservableObject {
     enum Access { case notDetermined, granted, denied }
 
@@ -23,13 +31,26 @@ final class CalendarModule: NotchModule, ObservableObject {
     let title = "Calendar"
     let icon = "calendar"
 
+    private static let remindersFile = "reminders.json"
+
     @Published private(set) var access: Access = .notDetermined
-    @Published private(set) var events: [CalendarEvent] = []
+    /// First day of the month being shown.
+    @Published private(set) var displayedMonth: Date
+    @Published var selectedDay: Date
+    /// Events of the displayed month, grouped by day.
+    @Published private(set) var eventsByDay: [Date: [CalendarEvent]] = [:]
+    @Published private(set) var reminders: [Reminder]
 
     private let store = EKEventStore()
+    private let calendar = Calendar.current
+    private var nextEvent: CalendarEvent?
     private var timer: Timer?
 
     init() {
+        let today = Calendar.current.startOfDay(for: Date())
+        selectedDay = today
+        displayedMonth = Calendar.current.dateInterval(of: .month, for: today)?.start ?? today
+        reminders = LocalStore.load([Reminder].self, from: Self.remindersFile) ?? []
         updateAccess()
         if access == .granted { reload() }
 
@@ -40,19 +61,23 @@ final class CalendarModule: NotchModule, ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if self.access == .granted { self.reload() }
+                if self.access == .granted { self.reload() } else { self.objectWillChange.send() }
             }
         }
     }
 
     deinit { timer?.invalidate() }
 
-    /// Next event that is still ahead; shown in the collapsed notch if it starts within 15 minutes.
+    /// Collapsed notch: the next event or reminder if it starts within 15 minutes.
     var compactInfo: CompactInfo? {
-        guard access == .granted,
-              let next = events.first(where: { !$0.isAllDay && $0.start > Date() }),
-              next.start.timeIntervalSinceNow <= 15 * 60 else { return nil }
-        let minutes = max(1, Int((next.start.timeIntervalSinceNow / 60).rounded(.up)))
+        let now = Date()
+        var soonest: Date?
+        if access == .granted, let event = nextEvent, event.start > now { soonest = event.start }
+        for reminder in reminders where !reminder.done && reminder.date > now {
+            if soonest == nil || reminder.date < soonest! { soonest = reminder.date }
+        }
+        guard let soonest, soonest.timeIntervalSince(now) <= 15 * 60 else { return nil }
+        let minutes = max(1, Int((soonest.timeIntervalSince(now) / 60).rounded(.up)))
         return CompactInfo(icon: "calendar", text: "in \(minutes)m", priority: 30)
     }
 
@@ -80,89 +105,120 @@ final class CalendarModule: NotchModule, ObservableObject {
         }
     }
 
-    // MARK: Loading
+    // MARK: Month navigation
+
+    func shiftMonth(by months: Int) {
+        guard let next = calendar.date(byAdding: .month, value: months, to: displayedMonth) else { return }
+        displayedMonth = next
+        reload()
+    }
+
+    func goToToday() {
+        let today = calendar.startOfDay(for: Date())
+        selectedDay = today
+        displayedMonth = calendar.dateInterval(of: .month, for: today)?.start ?? today
+        reload()
+    }
+
+    /// Day cells of the displayed month, padded with nil so weeks line up.
+    var monthCells: [Date?] {
+        guard let range = calendar.range(of: .day, in: .month, for: displayedMonth) else { return [] }
+        let weekday = calendar.component(.weekday, from: displayedMonth)
+        let leading = (weekday - calendar.firstWeekday + 7) % 7
+        var cells: [Date?] = Array(repeating: nil, count: leading)
+        for day in range {
+            cells.append(calendar.date(byAdding: .day, value: day - 1, to: displayedMonth))
+        }
+        while cells.count % 7 != 0 { cells.append(nil) }
+        return cells
+    }
+
+    /// Weekday initials starting from the user's first weekday.
+    var weekdaySymbols: [String] {
+        let symbols = calendar.veryShortStandaloneWeekdaySymbols
+        let start = calendar.firstWeekday - 1
+        return Array(symbols[start...] + symbols[..<start])
+    }
+
+    // MARK: Events
+
+    func events(on day: Date) -> [CalendarEvent] { eventsByDay[calendar.startOfDay(for: day)] ?? [] }
+
+    func reminders(on day: Date) -> [Reminder] {
+        reminders.filter { calendar.isDate($0.date, inSameDayAs: day) }.sorted { $0.date < $1.date }
+    }
 
     func reload() {
+        guard access == .granted else { return }
         let now = Date()
-        let predicate = store.predicateForEvents(withStart: now, end: now.addingTimeInterval(7 * 86400), calendars: nil)
-        let found = store.events(matching: predicate)
-            .filter { $0.endDate > now }
-            .sorted { $0.startDate < $1.startDate }
-            .prefix(6)
-            .map { event in
-                CalendarEvent(
+
+        // Events of the displayed month, grouped by every day they touch.
+        if let month = calendar.dateInterval(of: .month, for: displayedMonth) {
+            let predicate = store.predicateForEvents(withStart: month.start, end: month.end, calendars: nil)
+            var grouped: [Date: [CalendarEvent]] = [:]
+            for event in store.events(matching: predicate).sorted(by: { $0.startDate < $1.startDate }) {
+                let item = CalendarEvent(
                     id: event.eventIdentifier ?? UUID().uuidString,
                     title: event.title ?? "Untitled",
                     start: event.startDate, end: event.endDate,
                     isAllDay: event.isAllDay,
                     color: event.calendar.cgColor.map { Color(cgColor: $0) } ?? .blue
                 )
-            }
-        events = Array(found)
-        objectWillChange.send() // refresh relative times even when the list is unchanged
-    }
-}
-
-struct CalendarView: View {
-    @ObservedObject var module: CalendarModule
-
-    var body: some View {
-        switch module.access {
-        case .notDetermined:
-            message("Show your next events here.", button: "Allow calendar access") { module.requestAccess() }
-        case .denied:
-            message("Calendar access is turned off for NotchHub.", button: "Open Privacy settings") {
-                PermissionHelper.openCalendarSettings()
-            }
-        case .granted:
-            if module.events.isEmpty {
-                message("No events in the next 7 days.", button: nil) {}
-            } else {
-                ScrollView {
-                    VStack(spacing: 5) {
-                        ForEach(module.events) { row($0) }
-                    }
+                var day = calendar.startOfDay(for: event.startDate)
+                let last = calendar.startOfDay(for: event.endDate.addingTimeInterval(-1))
+                while day <= max(last, calendar.startOfDay(for: event.startDate)) {
+                    grouped[day, default: []].append(item)
+                    guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+                    day = next
                 }
-                .scrollIndicators(.hidden)
-                .padding(.horizontal, 6)
             }
+            eventsByDay = grouped
         }
+
+        // Next timed event, for the collapsed notch (independent of the month on screen).
+        let soon = store.predicateForEvents(withStart: now, end: now.addingTimeInterval(86400), calendars: nil)
+        nextEvent = store.events(matching: soon)
+            .filter { !$0.isAllDay && $0.startDate > now }
+            .min { $0.startDate < $1.startDate }
+            .map { CalendarEvent(id: $0.eventIdentifier ?? "", title: $0.title ?? "", start: $0.startDate,
+                                 end: $0.endDate, isAllDay: false, color: .blue) }
+        objectWillChange.send() // refresh relative times even when the data is unchanged
     }
 
-    private func row(_ event: CalendarEvent) -> some View {
-        HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 2).fill(event.color).frame(width: 4, height: 30)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(event.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                Text(timeText(event)).font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text(relative(event)).font(.system(size: 11)).foregroundStyle(.secondary)
+    // MARK: Reminders
+
+    /// Creates a reminder on `day` at the time of day taken from `time`.
+    func addReminder(title: String, day: Date, time: Date) {
+        let text = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let parts = calendar.dateComponents([.hour, .minute], from: time)
+        guard let date = calendar.date(bySettingHour: parts.hour ?? 9, minute: parts.minute ?? 0, second: 0, of: day) else { return }
+        let reminder = Reminder(title: text, date: date)
+        reminders.append(reminder)
+        Notifier.requestAuthorization()
+        Notifier.schedule(id: reminder.id.uuidString, title: "Reminder", body: text, at: date)
+        saveReminders()
+    }
+
+    func toggleDone(_ reminder: Reminder) {
+        guard let index = reminders.firstIndex(of: reminder) else { return }
+        reminders[index].done.toggle()
+        let updated = reminders[index]
+        if updated.done {
+            Notifier.cancel(id: updated.id.uuidString)
+        } else {
+            Notifier.schedule(id: updated.id.uuidString, title: "Reminder", body: updated.title, at: updated.date)
         }
-        .padding(.horizontal, 8).padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.07)))
+        saveReminders()
     }
 
-    private func timeText(_ event: CalendarEvent) -> String {
-        let day = event.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
-        if event.isAllDay { return "\(day) · All day" }
-        let time = "\(event.start.formatted(date: .omitted, time: .shortened)) – \(event.end.formatted(date: .omitted, time: .shortened))"
-        return Calendar.current.isDateInToday(event.start) ? time : "\(day) · \(time)"
+    func remove(_ reminder: Reminder) {
+        Notifier.cancel(id: reminder.id.uuidString)
+        reminders.removeAll { $0.id == reminder.id }
+        saveReminders()
     }
 
-    private func relative(_ event: CalendarEvent) -> String {
-        if event.start <= Date() { return "now" }
-        let minutes = Int(event.start.timeIntervalSinceNow / 60)
-        if minutes < 60 { return "in \(max(1, minutes)) min" }
-        if minutes < 24 * 60 { return "in \(minutes / 60) h" }
-        return ""
-    }
-
-    private func message(_ text: String, button: String?, action: @escaping () -> Void) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: "calendar").font(.system(size: 24)).foregroundStyle(.secondary)
-            Text(text).font(.system(size: 12)).multilineTextAlignment(.center)
-            if let button { Button(button, action: action).controlSize(.small) }
-        }
+    private func saveReminders() {
+        LocalStore.save(reminders, to: Self.remindersFile)
     }
 }
