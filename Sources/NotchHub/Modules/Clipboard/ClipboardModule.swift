@@ -4,10 +4,7 @@ import SwiftUI
 struct ClipItem: Codable, Identifiable, Equatable {
     var id = UUID()
     var text: String
-    var pinned = false
     var date = Date()
-    /// Optional short name for pinned snippets, e.g. "Email" or "LinkedIn".
-    var label: String?
 }
 
 /// A copied image (typically a screenshot taken with Ctrl+Cmd+Shift+4), kept as a PNG file.
@@ -24,7 +21,7 @@ final class ClipboardModule: NotchModule, ObservableObject {
     let title = "Clipboard"
     let icon = "doc.on.clipboard"
 
-    /// Maximum number of unpinned items kept.
+    /// Maximum number of text items kept.
     static let limit = 30
     /// Maximum number of screenshots kept (older ones are deleted from disk).
     static let imageLimit = 20
@@ -135,8 +132,6 @@ final class ClipboardModule: NotchModule, ObservableObject {
     }
 
     private func add(_ text: String) {
-        // Text that is already pinned stays in the pinned list, not in history.
-        if items.contains(where: { $0.text == text && $0.pinned }) { return }
         // Re-copying a history entry moves it to the top.
         items.removeAll { $0.text == text }
         items.insert(ClipItem(text: text), at: 0)
@@ -144,14 +139,9 @@ final class ClipboardModule: NotchModule, ObservableObject {
         persist()
     }
 
-    /// Keeps all pinned items plus the newest `limit` unpinned ones.
+    /// Keeps the newest `limit` items.
     private func trim() {
-        var unpinned = 0
-        items = items.filter { item in
-            if item.pinned { return true }
-            unpinned += 1
-            return unpinned <= Self.limit
-        }
+        if items.count > Self.limit { items.removeLast(items.count - Self.limit) }
     }
 
     // MARK: Actions
@@ -162,37 +152,18 @@ final class ClipboardModule: NotchModule, ObservableObject {
         lastChangeCount = pasteboard.changeCount // don't re-record our own copy
     }
 
-    func togglePin(_ item: ClipItem) {
-        guard let index = items.firstIndex(of: item) else { return }
-        items[index].pinned.toggle()
-        persist()
-    }
-
     func remove(_ item: ClipItem) {
         items.removeAll { $0.id == item.id }
         persist()
     }
 
-    /// Removes everything except pinned items.
     func clearAll() {
-        items.removeAll { !$0.pinned }
+        items.removeAll()
         persist()
     }
 
     /// Recent copies, newest first.
-    var history: [ClipItem] { items.filter { !$0.pinned } }
-
-    /// Items you keep on purpose (shown in the separate "Pinned" page).
-    var pinnedItems: [ClipItem] { items.filter(\.pinned) }
-
-    /// Adds a pinned snippet by hand (an email address, a profile link…).
-    func addSnippet(label: String, text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        items.insert(ClipItem(text: trimmed, pinned: true, label: name.isEmpty ? nil : name), at: 0)
-        persist()
-    }
+    var history: [ClipItem] { items }
 
     private func persist() {
         LocalStore.save(items, to: Self.file)

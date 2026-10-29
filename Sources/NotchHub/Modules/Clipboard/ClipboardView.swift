@@ -1,15 +1,11 @@
 import SwiftUI
 
-/// One page at a time: recent text, pinned snippets, or screenshots / copied images.
+/// One page at a time: recent text, or screenshots / copied images.
 /// Buttons in the header switch between them.
 struct ClipboardView: View {
     @ObservedObject var module: ClipboardModule
-    private enum Page { case text, pinned, images }
+    private enum Page { case text, images }
     @State private var page: Page = .text
-    private var showPinned: Bool { page == .pinned }
-    @State private var adding = false
-    @State private var newLabel = ""
-    @State private var newText = ""
     @State private var copiedID: UUID?
     @State private var copiedImageID: UUID?
 
@@ -18,7 +14,6 @@ struct ClipboardView: View {
             header
             switch page {
             case .text: historyPage
-            case .pinned: pinnedPage
             case .images: imagesPage
             }
         }
@@ -31,19 +26,12 @@ struct ClipboardView: View {
         HStack(spacing: 6) {
             pageButton("Text", symbol: "text.alignleft", count: module.history.count, selected: page == .text) { page = .text }
             pageButton("Screenshots", symbol: "photo", count: module.images.count, selected: page == .images) { page = .images }
-            pageButton("Pinned", symbol: "pin.fill", count: module.pinnedItems.count, selected: page == .pinned) { page = .pinned }
             Spacer()
             if page == .images {
                 Button("Clear all") { module.clearImages() }
                     .buttonStyle(.plain)
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .disabled(module.images.isEmpty)
-            } else if showPinned {
-                Button { adding.toggle() } label: {
-                    Label(adding ? "Cancel" : "Add text", systemImage: adding ? "xmark" : "plus")
-                        .font(.system(size: 11))
-                }
-                .buttonStyle(.plain).foregroundStyle(.secondary)
             } else {
                 Button("Clear history") { module.clearAll() }
                     .buttonStyle(.plain)
@@ -145,40 +133,6 @@ struct ClipboardView: View {
         }
     }
 
-    // MARK: Pinned page
-
-    @ViewBuilder
-    private var pinnedPage: some View {
-        if adding { addForm }
-        if module.pinnedItems.isEmpty && !adding {
-            Spacer()
-            Text("Nothing pinned yet.\nPin a copied text, or use “Add text” for an email or profile link.")
-                .font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Spacer()
-        } else {
-            list(module.pinnedItems)
-        }
-    }
-
-    private var addForm: some View {
-        HStack(spacing: 6) {
-            TextField("Name (optional)", text: $newLabel)
-                .frame(width: 120)
-            TextField("Text to keep, e.g. you@mail.com", text: $newText)
-                .onSubmit(saveSnippet)
-            Button("Save", action: saveSnippet)
-                .disabled(newText.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        .textFieldStyle(.roundedBorder)
-        .controlSize(.small)
-        .padding(.horizontal, 4)
-    }
-
-    private func saveSnippet() {
-        module.addSnippet(label: newLabel, text: newText)
-        newLabel = ""; newText = ""; adding = false
-    }
-
     // MARK: Rows
 
     private func list(_ items: [ClipItem]) -> some View {
@@ -192,24 +146,10 @@ struct ClipboardView: View {
 
     private func row(_ item: ClipItem) -> some View {
         HStack(spacing: 8) {
-            Button {
-                module.togglePin(item)
-            } label: {
-                Image(systemName: item.pinned ? "pin.slash" : "pin")
-                    .foregroundStyle(item.pinned ? Color.yellow : Color.white.opacity(0.5))
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(item.pinned ? "Unpin (back to history)" : "Pin")
-
             VStack(alignment: .leading, spacing: 1) {
-                if let label = item.label {
-                    Text(label).font(.system(size: 10, weight: .semibold)).foregroundStyle(.orange)
-                }
                 Text(item.text.trimmingCharacters(in: .whitespacesAndNewlines))
                     .font(.system(size: 12))
-                    .lineLimit(item.pinned ? 1 : 2)
+                    .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
