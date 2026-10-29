@@ -22,90 +22,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: Menu (rebuilt each time it opens so check marks are current)
 
+    /// Everything is configured inside the notch (Settings tab); the menu only offers a way out.
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-
-        menu.addItem(header("Modules"))
-        for module in registry.all {
-            let item = NSMenuItem(title: module.title, action: #selector(toggleModule(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = module.id
-            item.state = settings.isEnabled(module.id) ? .on : .off
-            item.image = NSImage(systemSymbolName: module.icon, accessibilityDescription: nil)
-            menu.addItem(item)
-        }
-
-        menu.addItem(.separator())
-        menu.addItem(header("Open notch"))
-        for mode in ExpandMode.allCases {
-            let item = NSMenuItem(title: mode.label, action: #selector(setMode(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = mode.rawValue
-            item.state = settings.expandMode == mode ? .on : .off
-            menu.addItem(item)
-        }
-
-        menu.addItem(.separator())
-        menu.addItem(header("Icon size"))
-        for option in AppSettings.iconSizes {
-            let item = NSMenuItem(title: option.label, action: #selector(setIconSize(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = option.value
-            item.state = settings.iconSize == option.value ? .on : .off
-            menu.addItem(item)
-        }
-        menu.addItem(header("Zoom on hover"))
-        for option in AppSettings.hoverZooms {
-            let item = NSMenuItem(title: option.label, action: #selector(setHoverZoom(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = option.value
-            item.state = settings.hoverZoom == option.value ? .on : .off
-            menu.addItem(item)
-        }
-
-        menu.addItem(.separator())
-        let login = NSMenuItem(title: "Launch at login", action: #selector(toggleLogin), keyEquivalent: "")
-        login.target = self
-        login.state = settings.launchAtLogin ? .on : .off
-        menu.addItem(login)
-
-        let automation = NSMenuItem(title: "Privacy settings (Automation)…", action: #selector(openAutomationSettings), keyEquivalent: "")
-        automation.target = self
-        menu.addItem(automation)
-
+        let open = NSMenuItem(title: "Open settings", action: #selector(openSettings), keyEquivalent: "")
+        open.target = self
+        menu.addItem(open)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit NotchHub", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 
-    private func header(_ title: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        return item
-    }
-
-    @objc private func toggleModule(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        settings.setEnabled(id, !settings.isEnabled(id))
-    }
-
-    @objc private func setMode(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let mode = ExpandMode(rawValue: raw) else { return }
-        settings.expandMode = mode
-    }
-
-    @objc private func setIconSize(_ sender: NSMenuItem) {
-        if let value = sender.representedObject as? Double { settings.iconSize = value }
-    }
-
-    @objc private func setHoverZoom(_ sender: NSMenuItem) {
-        if let value = sender.representedObject as? Double { settings.hoverZoom = value }
-    }
-
-    @objc private func toggleLogin() {
-        settings.setLaunchAtLogin(!settings.launchAtLogin)
-    }
-
-    @objc private func openAutomationSettings() {
-        PermissionHelper.openAutomationSettings()
+    @objc private func openSettings() {
+        registry.selectedID = "settings"
+        notch.expand()
     }
 }

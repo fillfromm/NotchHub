@@ -7,8 +7,9 @@ final class NotchState: ObservableObject {
     @Published var compact: CompactInfo?
 
     /// Size of the expanded notch (content area below the notch row is fixed-height).
-    static let expandedWidth: CGFloat = 620
-    static let contentHeight: CGFloat = 190
+    static let expandedWidth: CGFloat = 660
+    /// The side tab bar needs more room for its column of icons.
+    var contentHeight: CGFloat { AppSettings.shared.tabBarPosition == .side ? 224 : 190 }
 
     init(geometry: NotchGeometry) {
         self.geometry = geometry
@@ -19,7 +20,7 @@ final class NotchState: ObservableObject {
     }
 
     var expandedSize: CGSize {
-        CGSize(width: Self.expandedWidth, height: geometry.height + Self.contentHeight)
+        CGSize(width: Self.expandedWidth, height: geometry.height + contentHeight)
     }
 
     /// Current visible size.

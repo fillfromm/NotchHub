@@ -10,6 +10,13 @@ enum LocalStore {
         return dir
     }
 
+    /// Folder for larger files (e.g. screenshots), created on demand.
+    static func folder(_ name: String) -> URL {
+        let dir = directory.appendingPathComponent(name, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     static func load<T: Decodable>(_ type: T.Type, from name: String) -> T? {
         guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)) else { return nil }
         return try? JSONDecoder().decode(T.self, from: data)

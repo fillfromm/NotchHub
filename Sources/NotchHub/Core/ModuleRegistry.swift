@@ -14,6 +14,9 @@ final class ModuleRegistry: ObservableObject {
         self.all = modules ?? ModuleRegistry.makeDefaultModules()
         self.selectedID = all.first?.id ?? ""
 
+        // The settings tab lists every module so it can switch them on and off.
+        (all.first { $0 is SettingsModule } as? SettingsModule)?.allModules = { [unowned self] in self.all }
+
         // Re-publish module and settings changes so SwiftUI and the controller refresh.
         for module in all {
             module.statePublisher
@@ -33,11 +36,15 @@ final class ModuleRegistry: ObservableObject {
             ClipboardModule(),
             VolumeModule(),
             CalendarModule(),
+            ProfileModule(),
+            TranslatorModule(),
+            WindowsModule(),
+            SettingsModule(),   // keep last: it is the "gear" tab
         ]
     }
 
     var enabled: [NotchModule] {
-        all.filter { settings.isEnabled($0.id) }
+        all.filter { $0.alwaysEnabled || settings.isEnabled($0.id) }
     }
 
     /// Selected module, falling back to the first enabled one.

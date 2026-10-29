@@ -53,7 +53,7 @@ final class NotchController {
     private func refreshCompact() {
         let info = registry.compactInfo
         if info != state.compact { state.compact = info }
-        if !state.isExpanded { applyFrame() }
+        applyFrame() // also follows size changes while open (e.g. tab bar position)
     }
 
     private func screenChanged() {
@@ -88,6 +88,11 @@ final class NotchController {
         guard state.isExpanded else { return }
         // Don't close while the user is typing, unless they clicked elsewhere.
         if !force, panel.isKeyWindow, panel.firstResponder is NSText { return }
+        // A drag in progress (e.g. a screenshot being dragged out) must not lose its source view.
+        if !force, NSEvent.pressedMouseButtons & 1 != 0 {
+            schedule(\.pendingCollapse, after: 0.3) { [weak self] in self?.collapse() }
+            return
+        }
         panel.makeFirstResponder(nil)
         state.isExpanded = false
         // Shrink the window once the collapse animation has finished.

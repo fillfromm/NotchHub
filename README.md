@@ -38,6 +38,10 @@ NotchHub has no Dock icon: look for the menu bar icon and the notch itself.
 | Timer & Alarm | Countdown with iPhone-style wheels, stopwatch, alarm clock that shows "rings in 7 h 25 min"; notification + sound |
 | Clipboard | Two pages in one window: History (last 30 items) and Pinned (snippets you reuse, incl. ones you add by hand, like an email or profile link). Click to copy. Stored locally; items marked concealed by password managers are skipped |
 | Volume | Volume and mute per output device, click a device to switch output (speakers, headphones, monitor), plus the Music app's own volume. Per-app volume for other apps needs a virtual audio driver and is not possible with public macOS APIs |
+| Profile | Your email, phone and profile links in one filterable list; click a row to copy. Stored locally |
+| Translate | Word/phrase translation between English, Russian and Czech. Uses the free MyMemory web service, so the typed text is sent to it |
+| Windows | Lists open windows and snaps the chosen one to a half, quarter, third or the full screen (Accessibility permission; re-grant after a rebuild) |
+| Settings | Everything configurable lives here: tabs on/off, hover/click, tab icons top or side, icon size, zoom, launch at login |
 | Calendar | Month grid you can page through (arrows or swipe), dots on days with events or reminders, the selected day's events, and your own reminders with a notification at the chosen time. Shows "in 12m" in the collapsed notch when something is imminent |
 
 While collapsed, the highest-priority module with live info (timer > calendar > music) shows an icon and short text beside the notch.
@@ -63,7 +67,7 @@ Sources/NotchHub/
   main.swift, AppDelegate.swift   entry point, menu bar item
   Core/      module protocol, registry, settings, AppleScript runner, local storage, notifications
   Notch/     geometry (notch detection), shape, panel, controller (hover/click), SwiftUI root view
-  Modules/   Music, Timer, Clipboard, Volume, Calendar
+  Modules/   Music, Timer, Clipboard, Volume, Calendar, Profile, Translator, Windows, Settings
 build.sh     builds and launches the .app
 ```
 

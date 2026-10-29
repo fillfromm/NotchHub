@@ -14,6 +14,14 @@ enum ExpandMode: String, CaseIterable {
     }
 }
 
+/// Where the module icons sit in the expanded notch.
+enum TabBarPosition: String, CaseIterable {
+    case top
+    case side
+
+    var label: String { self == .top ? "Top" : "Side" }
+}
+
 /// User preferences, persisted in `UserDefaults`.
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
@@ -24,6 +32,7 @@ final class AppSettings: ObservableObject {
         static let disabledModules = "disabledModules"
         static let iconSize = "iconSize"
         static let hoverZoom = "hoverZoom"
+        static let tabBarPosition = "tabBarPosition"
     }
 
     static let iconSizes: [(label: String, value: Double)] = [("Small", 14), ("Medium", 18), ("Large", 22)]
@@ -39,6 +48,11 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(hoverZoom, forKey: Key.hoverZoom) }
     }
 
+    /// Icons around the notch (top) or in a column on the left (side).
+    @Published var tabBarPosition: TabBarPosition {
+        didSet { defaults.set(tabBarPosition.rawValue, forKey: Key.tabBarPosition) }
+    }
+
     @Published var expandMode: ExpandMode {
         didSet { defaults.set(expandMode.rawValue, forKey: Key.expandMode) }
     }
@@ -48,6 +62,7 @@ final class AppSettings: ObservableObject {
 
     private init() {
         expandMode = ExpandMode(rawValue: defaults.string(forKey: Key.expandMode) ?? "") ?? .hover
+        tabBarPosition = TabBarPosition(rawValue: defaults.string(forKey: Key.tabBarPosition) ?? "") ?? .top
         iconSize = defaults.object(forKey: Key.iconSize) as? Double ?? 18
         hoverZoom = defaults.object(forKey: Key.hoverZoom) as? Double ?? 1.35
         disabledModules = Set(defaults.stringArray(forKey: Key.disabledModules) ?? [])

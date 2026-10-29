@@ -27,6 +27,8 @@ protocol NotchModule: AnyObject {
     var icon: String { get }
     /// Optional info for the collapsed notch.
     var compactInfo: CompactInfo? { get }
+    /// Modules that can't be disabled in settings. Defaults to false.
+    var alwaysEnabled: Bool { get }
     /// Fires whenever the module's state changes, so the notch can refresh.
     var statePublisher: AnyPublisher<Void, Never> { get }
     /// The full-size view shown in the expanded notch.
@@ -35,6 +37,8 @@ protocol NotchModule: AnyObject {
 
 extension NotchModule {
     var compactInfo: CompactInfo? { nil }
+    /// True for modules that can't be switched off (the Settings tab).
+    var alwaysEnabled: Bool { false }
 }
 
 extension NotchModule where Self: ObservableObject {
