@@ -1,6 +1,6 @@
 # NotchHub
 
-Turns the MacBook notch into a small tool hub. Hover (or click) the notch and it expands into tabs: music, timer and alarm, clipboard history and your next calendar event. On Macs without a notch (or external displays) it becomes a pill at the top-center of the screen.
+Turns the MacBook notch into a small tool hub. Hover (or click) the notch and it expands into tabs: music, timer and alarm, clipboard history, volume and your next calendar event. On Macs without a notch (or external displays) it becomes a pill at the top-center of the screen.
 
 Swift + SwiftUI + AppKit, macOS 14+, no third-party dependencies. All code is original; the UX idea is inspired by projects like vorssaint.
 
@@ -37,6 +37,7 @@ NotchHub has no Dock icon: look for the menu bar icon and the notch itself.
 | Music | Now playing, artwork, play/pause/next/previous for Apple Music via AppleScript; remembers the last track (no private MediaRemote) |
 | Timer & Alarm | Countdown with iPhone-style wheels, stopwatch, alarm clock that shows "rings in 7 h 25 min"; notification + sound |
 | Clipboard | Two pages in one window: History (last 30 items) and Pinned (snippets you reuse, incl. ones you add by hand, like an email or profile link). Click to copy. Stored locally; items marked concealed by password managers are skipped |
+| Volume | Volume and mute per output device, click a device to switch output (speakers, headphones, monitor), plus the Music app's own volume. Per-app volume for other apps needs a virtual audio driver and is not possible with public macOS APIs |
 | Calendar | Month grid you can page through (arrows or swipe), dots on days with events or reminders, the selected day's events, and your own reminders with a notification at the chosen time. Shows "in 12m" in the collapsed notch when something is imminent |
 
 While collapsed, the highest-priority module with live info (timer > calendar > music) shows an icon and short text beside the notch.
@@ -62,7 +63,7 @@ Sources/NotchHub/
   main.swift, AppDelegate.swift   entry point, menu bar item
   Core/      module protocol, registry, settings, AppleScript runner, local storage, notifications
   Notch/     geometry (notch detection), shape, panel, controller (hover/click), SwiftUI root view
-  Modules/   Music, Timer, Clipboard, Calendar
+  Modules/   Music, Timer, Clipboard, Volume, Calendar
 build.sh     builds and launches the .app
 ```
 
