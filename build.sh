@@ -23,17 +23,24 @@ swift build -c "$CONFIG"
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
 
 echo "==> Assembling build/$APP_NAME.app"
-APP="build/$APP_NAME.app"
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN_DIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
-cp Resources/Info.plist "$APP/Contents/Info.plist"
-[ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# Assemble and sign in a temp dir: folders synced by iCloud/Finder (Desktop, Documents)
+# add metadata that makes codesign fail with "detritus not allowed".
+STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE"' EXIT
+STAGED="$STAGE/$APP_NAME.app"
+mkdir -p "$STAGED/Contents/MacOS" "$STAGED/Contents/Resources"
+cp "$BIN_DIR/$APP_NAME" "$STAGED/Contents/MacOS/$APP_NAME"
+cp Resources/Info.plist "$STAGED/Contents/Info.plist"
+[ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$STAGED/Contents/Resources/AppIcon.icns"
 
 # Ad-hoc signing gives the app a stable identity so macOS remembers the
 # Automation / Calendar permissions between launches.
-xattr -cr "$APP" 2>/dev/null || true
-codesign --force --sign - --identifier com.notchhub.app "$APP"
+codesign --force --sign - --identifier com.notchhub.app "$STAGED"
+
+APP="build/$APP_NAME.app"
+rm -rf "$APP"
+mkdir -p build
+ditto --norsrc --noextattr --noqtn "$STAGED" "$APP"
 
 echo "==> Built $APP"
 if [ "$RUN" = "1" ]; then
