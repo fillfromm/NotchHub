@@ -31,19 +31,28 @@ final class ClipboardModule: NotchModule, ObservableObject {
 
     @Published private(set) var items: [ClipItem]
     @Published private(set) var images: [ClipImage]
+    /// True when macOS doesn't let us read the screenshot folder (Files & Folders permission).
+    @Published private(set) var folderBlocked = false
     private var thumbnails: [UUID: NSImage] = [:]
 
     private let pasteboard = NSPasteboard.general
     private var lastChangeCount: Int
     private var timer: Timer?
+    private var tick = 0
+    private var knownScreenshots: Set<String> = []
 
     init() {
         items = LocalStore.load([ClipItem].self, from: Self.file) ?? []
         images = LocalStore.load([ClipImage].self, from: Self.imagesFile) ?? []
         lastChangeCount = pasteboard.changeCount
         // The pasteboard has no change notification, so poll the (cheap) change counter.
+        knownScreenshots = Set(screenshotFiles().map(\.lastPathComponent))
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkPasteboard() }
+            MainActor.assumeIsolated {
+                self?.checkPasteboard()
+                self?.tick += 1
+                if let self, self.tick % 2 == 0 { self.checkScreenshotFolder() }
+            }
         }
     }
 
@@ -78,8 +87,57 @@ final class ClipboardModule: NotchModule, ObservableObject {
 
     /// Reads the image from the pasteboard and stores it as a PNG.
     private func addImage() {
-        guard let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff),
-              let rep = NSBitmapImageRep(data: data),
+        guard let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) else { return }
+        store(imageData: data)
+    }
+
+    // MARK: Screenshot files
+
+    /// Where macOS saves screenshots: the user's chosen folder, or the Desktop.
+    private var screenshotFolder: URL {
+        if let path = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location") {
+            return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+        }
+        return FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0]
+    }
+
+    /// Image files in that folder that look like system screenshots (English and Russian names).
+    private func screenshotFiles() -> [URL] {
+        let prefixes = ["screenshot", "screen shot", "снимок экрана", "скриншот"]
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(
+                at: screenshotFolder, includingPropertiesForKeys: [.contentModificationDateKey])
+            if folderBlocked { folderBlocked = false }
+        } catch {
+            // Usually macOS denying access to Desktop / Documents until the user allows it.
+            if !folderBlocked { folderBlocked = true }
+            return []
+        }
+        return files.filter { url in
+            let name = url.lastPathComponent.lowercased()
+            return ["png", "jpg", "jpeg"].contains(url.pathExtension.lowercased())
+                && prefixes.contains { name.hasPrefix($0) }
+        }
+    }
+
+    /// Imports screenshots that appeared since the last check.
+    private func checkScreenshotFolder() {
+        guard AppSettings.shared.importScreenshots else { return }
+        for url in screenshotFiles() where !knownScreenshots.contains(url.lastPathComponent) {
+            // Skip files still being written.
+            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            guard let modified, Date().timeIntervalSince(modified) > 1 else { continue }
+            knownScreenshots.insert(url.lastPathComponent)
+            guard let data = try? Data(contentsOf: url) else { continue }
+            store(imageData: data)
+            if AppSettings.shared.trashScreenshots { try? FileManager.default.trashItem(at: url, resultingItemURL: nil) }
+        }
+    }
+
+    /// Converts image data to PNG and adds it to the list.
+    private func store(imageData data: Data) {
+        guard let rep = NSBitmapImageRep(data: data),
               let png = rep.representation(using: .png, properties: [:]) else { return }
         let image = ClipImage(width: rep.pixelsWide, height: rep.pixelsHigh)
         do { try png.write(to: fileURL(for: image), options: .atomic) } catch { return }

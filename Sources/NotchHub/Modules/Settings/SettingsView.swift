@@ -58,6 +58,11 @@ struct SettingsView: View {
                     AppSettings.hoverZooms.first { $0.value == v }?.label ?? ""
                 }
             }
+            Toggle("Catch screenshots saved to disk", isOn: $settings.importScreenshots)
+                .toggleStyle(.switch).controlSize(.small).font(.system(size: 12))
+            Toggle("Move them to Trash after catching", isOn: $settings.trashScreenshots)
+                .toggleStyle(.switch).controlSize(.small).font(.system(size: 12))
+                .disabled(!settings.importScreenshots)
             HStack(spacing: 10) {
                 Toggle("Launch at login", isOn: Binding(get: { settings.launchAtLogin },
                                                         set: { settings.setLaunchAtLogin($0) }))

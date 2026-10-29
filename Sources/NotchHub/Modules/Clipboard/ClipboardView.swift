@@ -75,7 +75,19 @@ struct ClipboardView: View {
 
     @ViewBuilder
     private var imagesPage: some View {
-        if module.images.isEmpty {
+        if module.folderBlocked {
+            VStack(spacing: 6) {
+                Text("macOS blocks NotchHub from reading the folder where screenshots are saved.")
+                    .font(.system(size: 12)).foregroundStyle(.orange)
+                Button("Allow in Files & Folders…") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")!)
+                }
+                .controlSize(.small)
+                Text("Turn on Desktop Folder for NotchHub, then take a new screenshot.")
+                    .font(.system(size: 10)).foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if module.images.isEmpty {
             Spacer()
             Text("Take a screenshot to the clipboard (⌃⌘⇧4) and it lands here.\nDrag it into any app, or click to copy it again.")
                 .font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)

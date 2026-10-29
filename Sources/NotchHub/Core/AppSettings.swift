@@ -33,6 +33,8 @@ final class AppSettings: ObservableObject {
         static let iconSize = "iconSize"
         static let hoverZoom = "hoverZoom"
         static let tabBarPosition = "tabBarPosition"
+        static let importScreenshots = "importScreenshots"
+        static let trashScreenshots = "trashScreenshots"
     }
 
     static let iconSizes: [(label: String, value: Double)] = [("Small", 14), ("Medium", 18), ("Large", 22)]
@@ -53,6 +55,16 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(tabBarPosition.rawValue, forKey: Key.tabBarPosition) }
     }
 
+    /// Pick up screenshot files that macOS saves to disk and show them in the clipboard tab.
+    @Published var importScreenshots: Bool {
+        didSet { defaults.set(importScreenshots, forKey: Key.importScreenshots) }
+    }
+
+    /// Move the original file to the Trash after importing it, so the Desktop stays clean.
+    @Published var trashScreenshots: Bool {
+        didSet { defaults.set(trashScreenshots, forKey: Key.trashScreenshots) }
+    }
+
     @Published var expandMode: ExpandMode {
         didSet { defaults.set(expandMode.rawValue, forKey: Key.expandMode) }
     }
@@ -63,6 +75,8 @@ final class AppSettings: ObservableObject {
     private init() {
         expandMode = ExpandMode(rawValue: defaults.string(forKey: Key.expandMode) ?? "") ?? .hover
         tabBarPosition = TabBarPosition(rawValue: defaults.string(forKey: Key.tabBarPosition) ?? "") ?? .top
+        importScreenshots = defaults.object(forKey: Key.importScreenshots) as? Bool ?? true
+        trashScreenshots = defaults.object(forKey: Key.trashScreenshots) as? Bool ?? true
         iconSize = defaults.object(forKey: Key.iconSize) as? Double ?? 18
         hoverZoom = defaults.object(forKey: Key.hoverZoom) as? Double ?? 1.35
         disabledModules = Set(defaults.stringArray(forKey: Key.disabledModules) ?? [])
