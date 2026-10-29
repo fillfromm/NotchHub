@@ -7,7 +7,7 @@ final class NotchState: ObservableObject {
     @Published var compact: CompactInfo?
 
     /// Size of the expanded notch (content area below the notch row is fixed-height).
-    static let expandedWidth: CGFloat = 560
+    static let expandedWidth: CGFloat = 620
     static let contentHeight: CGFloat = 190
 
     init(geometry: NotchGeometry) {

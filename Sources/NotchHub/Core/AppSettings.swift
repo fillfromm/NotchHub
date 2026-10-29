@@ -22,6 +22,21 @@ final class AppSettings: ObservableObject {
     private enum Key {
         static let expandMode = "expandMode"
         static let disabledModules = "disabledModules"
+        static let iconSize = "iconSize"
+        static let hoverZoom = "hoverZoom"
+    }
+
+    static let iconSizes: [(label: String, value: Double)] = [("Small", 14), ("Medium", 18), ("Large", 22)]
+    static let hoverZooms: [(label: String, value: Double)] = [("Off", 1.0), ("Medium", 1.35), ("Large", 1.7)]
+
+    /// Size of the tab icons in points (menu offers presets).
+    @Published var iconSize: Double {
+        didSet { defaults.set(iconSize, forKey: Key.iconSize) }
+    }
+
+    /// Scale applied to the icon under the mouse (1.0 = no zoom).
+    @Published var hoverZoom: Double {
+        didSet { defaults.set(hoverZoom, forKey: Key.hoverZoom) }
     }
 
     @Published var expandMode: ExpandMode {
@@ -33,6 +48,8 @@ final class AppSettings: ObservableObject {
 
     private init() {
         expandMode = ExpandMode(rawValue: defaults.string(forKey: Key.expandMode) ?? "") ?? .hover
+        iconSize = defaults.object(forKey: Key.iconSize) as? Double ?? 18
+        hoverZoom = defaults.object(forKey: Key.hoverZoom) as? Double ?? 1.35
         disabledModules = Set(defaults.stringArray(forKey: Key.disabledModules) ?? [])
     }
 

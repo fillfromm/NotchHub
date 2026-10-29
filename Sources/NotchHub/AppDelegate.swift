@@ -46,6 +46,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        menu.addItem(header("Icon size"))
+        for option in AppSettings.iconSizes {
+            let item = NSMenuItem(title: option.label, action: #selector(setIconSize(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = option.value
+            item.state = settings.iconSize == option.value ? .on : .off
+            menu.addItem(item)
+        }
+        menu.addItem(header("Zoom on hover"))
+        for option in AppSettings.hoverZooms {
+            let item = NSMenuItem(title: option.label, action: #selector(setHoverZoom(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = option.value
+            item.state = settings.hoverZoom == option.value ? .on : .off
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
         let login = NSMenuItem(title: "Launch at login", action: #selector(toggleLogin), keyEquivalent: "")
         login.target = self
         login.state = settings.launchAtLogin ? .on : .off
@@ -73,6 +91,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func setMode(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let mode = ExpandMode(rawValue: raw) else { return }
         settings.expandMode = mode
+    }
+
+    @objc private func setIconSize(_ sender: NSMenuItem) {
+        if let value = sender.representedObject as? Double { settings.iconSize = value }
+    }
+
+    @objc private func setHoverZoom(_ sender: NSMenuItem) {
+        if let value = sender.representedObject as? Double { settings.hoverZoom = value }
     }
 
     @objc private func toggleLogin() {

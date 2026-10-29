@@ -60,6 +60,7 @@ struct CollapsedView: View {
 struct ExpandedView: View {
     @ObservedObject var state: NotchState
     @ObservedObject var registry: ModuleRegistry
+    @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -98,17 +99,40 @@ struct ExpandedView: View {
     }
 
     private func tab(_ module: NotchModule) -> some View {
-        let selected = registry.selected?.id == module.id
-        return Button {
+        TabButton(module: module,
+                  selected: registry.selected?.id == module.id,
+                  size: settings.iconSize,
+                  zoom: settings.hoverZoom) {
             withAnimation(.easeInOut(duration: 0.15)) { registry.select(module) }
-        } label: {
+        }
+    }
+}
+
+/// One icon in the tab bar. Grows under the mouse and has a generous hit area,
+/// so you don't have to aim precisely.
+struct TabButton: View {
+    let module: NotchModule
+    let selected: Bool
+    let size: Double
+    let zoom: Double
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
             Image(systemName: module.icon)
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 30, height: 24)
-                .background(Capsule().fill(selected ? Color.white.opacity(0.18) : .clear))
-                .foregroundStyle(selected ? Color.white : Color.white.opacity(0.55))
+                .font(.system(size: size, weight: .medium))
+                .frame(width: size * 2.1, height: size * 1.7)
+                .background(Capsule().fill(selected ? Color.white.opacity(0.2) : (hovering ? Color.white.opacity(0.1) : .clear)))
+                .foregroundStyle(selected || hovering ? Color.white : Color.white.opacity(0.55))
+                .contentShape(Rectangle())
+                // Anchored at the top so the zoom grows downwards, away from the screen edge.
+                .scaleEffect(hovering ? zoom : 1, anchor: .top)
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: hovering)
+        .zIndex(hovering ? 1 : 0)
         .help(module.title)
     }
 }
