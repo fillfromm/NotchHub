@@ -1,6 +1,6 @@
 # NotchHub
 
-Turns the MacBook notch into a small tool hub. Hover (or click) the notch and it expands into tabs: music, timer, clipboard history, calculator, Claude Code usage, notes, system stats and your next calendar event. On Macs without a notch (or external displays) it becomes a pill at the top-center of the screen.
+Turns the MacBook notch into a small tool hub. Hover (or click) the notch and it expands into tabs: music, timer and alarm, clipboard history and your next calendar event. On Macs without a notch (or external displays) it becomes a pill at the top-center of the screen.
 
 Swift + SwiftUI + AppKit, macOS 14+, no third-party dependencies. All code is original; the UX idea is inspired by projects like vorssaint.
 
@@ -37,19 +37,16 @@ NotchHub has no Dock icon: look for the menu bar icon and the notch itself.
 | Music | Now playing, artwork, play/pause/next/previous for Apple Music via AppleScript; remembers the last track (no private MediaRemote) |
 | Timer & Alarm | Countdown with iPhone-style wheels, stopwatch, alarm clock that shows "rings in 7 h 25 min"; notification + sound |
 | Clipboard | Two pages in one window: History (last 30 items) and Pinned (snippets you reuse, incl. ones you add by hand, like an email or profile link). Click to copy. Stored locally; items marked concealed by password managers are skipped |
-| AI usage | Reads Claude Code logs in `~/.claude/projects`: "% left" in the current 5h window (against your own limit or an automatic estimate), plus today and 7-day totals. API integration is a placeholder; no keys anywhere |
-| Quick notes | One scratchpad note, autosaved |
-| System | Battery, CPU, memory, disk; low-battery warning in the collapsed notch |
 | Calendar | Next events (EventKit); shows "in 12m" in the collapsed notch when one is imminent |
 
-While collapsed, the highest-priority module with live info (timer > calendar > music > low battery) shows an icon and short text beside the notch.
+While collapsed, the highest-priority module with live info (timer > calendar > music) shows an icon and short text beside the notch.
 
 ## Permissions
 
 - **Automation (Music):** macOS asks the first time Music is running while NotchHub polls it. If you click Don't Allow, the Music tab says so and links to System Settings › Privacy & Security › Automation. NotchHub only launches Music when you press play while it is closed.
 - **Calendars:** requested only when you press "Allow calendar access" in the Calendar tab.
 - **Notifications:** requested when you first start a timer.
-- Clipboard, system stats and Claude logs need no permission. No data leaves your Mac.
+- Clipboard needs no permission. No data leaves your Mac.
 
 Data is stored in `~/Library/Application Support/NotchHub/`.
 
@@ -65,7 +62,7 @@ Sources/NotchHub/
   main.swift, AppDelegate.swift   entry point, menu bar item
   Core/      module protocol, registry, settings, AppleScript runner, local storage, notifications
   Notch/     geometry (notch detection), shape, panel, controller (hover/click), SwiftUI root view
-  Modules/   Music, Timer, Clipboard, AIUsage, Notes, System, Calendar
+  Modules/   Music, Timer, Clipboard, Calendar
 build.sh     builds and launches the .app
 ```
 

@@ -20,7 +20,7 @@ final class NotchPanel: NSPanel {
         animationBehavior = .none
     }
 
-    // Needed so text fields (notes, calculator) can take keyboard focus
+    // Needed so text fields (clipboard snippets) can take keyboard focus
     // without the app becoming the active application.
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
