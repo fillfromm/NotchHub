@@ -75,3 +75,19 @@ build.sh     builds and launches the .app
 - Ad-hoc signed, not notarized. "Launch at login" needs the `.app` build.
 - Claude's real quota is not available locally, so the limit bar uses a budget you set.
 - Clipboard history is text only.
+
+## Claude Code status line (limit left + reset time)
+
+`scripts/claude-statusline.py` prints the real remaining usage limit and the time until it resets
+inside Claude Code itself, using the `rate_limits` data Claude Code passes to status line scripts
+(Pro/Max plans). Enable it in `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "python3 -I /absolute/path/to/NotchHub/scripts/claude-statusline.py",
+    "refreshInterval": 60
+  }
+}
+```
