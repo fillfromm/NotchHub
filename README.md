@@ -94,3 +94,13 @@ inside Claude Code itself, using the `rate_limits` data Claude Code passes to st
   }
 }
 ```
+
+## Privacy
+
+NotchHub stores everything (clipboard history, screenshots, profile rows, pictures, reminders) locally in
+`~/Library/Application Support/NotchHub/` and has no analytics or accounts. The only network use is the
+Translate tab, which sends the text you type to the free MyMemory service (api.mymemory.translated.net).
+
+## License
+
+[MIT](LICENSE). Use it, change your own copy as you like; changes to this repository go through the owner.
