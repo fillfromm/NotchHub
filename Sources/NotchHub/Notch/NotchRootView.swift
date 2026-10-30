@@ -27,6 +27,7 @@ struct NotchRootView: View {
         .frame(width: size.width, height: size.height, alignment: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(spring, value: state.isExpanded)
+        .animation(spring, value: state.contentHeightOverride)
         .preferredColorScheme(.dark)
         .ignoresSafeArea()
     }

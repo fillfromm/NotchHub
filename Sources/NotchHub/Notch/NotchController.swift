@@ -51,6 +51,8 @@ final class NotchController {
     // MARK: State sync
 
     private func refreshCompact() {
+        let height = registry.selected?.preferredContentHeight
+        if height != state.contentHeightOverride { state.contentHeightOverride = height }
         let info = registry.compactInfo
         if info != state.compact { state.compact = info }
         applyFrame() // also follows size changes while open (e.g. tab bar position)

@@ -29,6 +29,8 @@ protocol NotchModule: AnyObject {
     var compactInfo: CompactInfo? { get }
     /// Modules that can't be disabled in settings. Defaults to false.
     var alwaysEnabled: Bool { get }
+    /// Content height below the notch row; nil uses the standard height.
+    var preferredContentHeight: CGFloat? { get }
     /// Fires whenever the module's state changes, so the notch can refresh.
     var statePublisher: AnyPublisher<Void, Never> { get }
     /// The full-size view shown in the expanded notch.
@@ -39,6 +41,8 @@ extension NotchModule {
     var compactInfo: CompactInfo? { nil }
     /// True for modules that can't be switched off (the Settings tab).
     var alwaysEnabled: Bool { false }
+    /// Content height this module wants (nil = the standard height).
+    var preferredContentHeight: CGFloat? { nil }
 }
 
 extension NotchModule where Self: ObservableObject {

@@ -7,12 +7,15 @@ final class ModuleRegistry: ObservableObject {
     private let settings: AppSettings
     private var cancellables = Set<AnyCancellable>()
 
-    @Published var selectedID: String
+    /// The last used tab is remembered, so the notch reopens on it (also after a restart).
+    @Published var selectedID: String {
+        didSet { UserDefaults.standard.set(selectedID, forKey: "selectedTab") }
+    }
 
     init(settings: AppSettings = .shared, modules: [NotchModule]? = nil) {
         self.settings = settings
         self.all = modules ?? ModuleRegistry.makeDefaultModules()
-        self.selectedID = all.first?.id ?? ""
+        self.selectedID = UserDefaults.standard.string(forKey: "selectedTab") ?? all.first?.id ?? ""
 
         // The settings tab lists every module so it can switch them on and off.
         (all.first { $0 is SettingsModule } as? SettingsModule)?.allModules = { [unowned self] in self.all }
@@ -39,6 +42,7 @@ final class ModuleRegistry: ObservableObject {
             ProfileModule(),
             TranslatorModule(),
             WindowsModule(),
+            PicturesModule(),
             SettingsModule(),   // keep last: it is the "gear" tab
         ]
     }

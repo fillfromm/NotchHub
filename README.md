@@ -41,6 +41,7 @@ NotchHub has no Dock icon: look for the menu bar icon and the notch itself.
 | Profile | Editable rows: name a row yourself ("Phone", "LinkedIn") and type its value; a button copies it. Stored locally |
 | Translate | Word/phrase translation between English, Russian and Czech. Uses the free MyMemory web service, so the typed text is sent to it |
 | Windows | Lists open windows and snaps the chosen one to a half, quarter, third or the full screen (Accessibility permission; re-grant after a rebuild) |
+| Pictures | Keep a few pictures (a class schedule, a map) and see the selected one large. The notch reopens on the last used tab, so hovering shows it immediately. Add by drag and drop, file picker or clipboard |
 | Settings | Everything configurable lives here: tabs on/off, hover/click, tab icons top or side, icon size, zoom, launch at login |
 | Calendar | Month grid you can page through (arrows or swipe), dots on days with events or reminders, the selected day's events, and your own reminders with a notification at the chosen time. Shows "in 12m" in the collapsed notch when something is imminent |
 
@@ -67,7 +68,7 @@ Sources/NotchHub/
   main.swift, AppDelegate.swift   entry point, menu bar item
   Core/      module protocol, registry, settings, AppleScript runner, local storage, notifications
   Notch/     geometry (notch detection), shape, panel, controller (hover/click), SwiftUI root view
-  Modules/   Music, Timer, Clipboard, Volume, Calendar, Profile, Translator, Windows, Settings
+  Modules/   Music, Timer, Clipboard, Volume, Calendar, Profile, Translator, Windows, Pictures, Settings
 build.sh     builds and launches the .app
 ```
 
